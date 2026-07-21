@@ -24,13 +24,9 @@ npx skills add leonvanzyl/skills --skill <skill-name>
 
 ## Skills
 
-No skills published yet — first ones coming soon.
-
-<!-- When adding a skill, list it here:
 | Skill | Description |
 | ----- | ----------- |
-| [my-skill](skills/my-skill) | What it does |
--->
+| [start-an-app](skills/start-an-app) | Interview-driven app scaffolder: asks what you're building in plain language, recommends the right options (SQLite vs Postgres, sign-in, AI features), and builds a working Next.js app that's yours from the first commit — not a template. |
 
 ## Adding a new skill
 
