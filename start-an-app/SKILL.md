@@ -1,6 +1,6 @@
 ---
 name: start-an-app
-description: Interview the user in depth about what they actually want to build, then scaffold a working full-stack web app around it. Use when the user wants to start a new app, website, prototype, or SaaS; when they don't know what tech stack to pick; or when they want a solid working starting point fast. Covers requirements discovery, project setup, database (SQLite or Postgres in Docker), sign-in, file uploads, payments, AI features, and a real landing page and dashboard.
+description: Interview the user in depth about what they actually want to build, then scaffold a working full-stack web app around it. Use when the user wants to start a new app, website, prototype, or SaaS; when they don't know what tech stack to pick; or when they want a solid working starting point fast. Covers requirements discovery, project setup, database (SQLite, or Postgres on a free hosted branch, in Docker, or fully local), sign-in, file uploads, payments, AI features, and a real landing page and dashboard.
 ---
 
 # Start an App
@@ -21,6 +21,11 @@ Turn an idea into a running web app. Understand the idea properly first, then bu
 - The stack is fixed: Next.js, TypeScript, Tailwind, shadcn/ui, Drizzle, Better Auth. The interview chooses *within* it (which database, what kind of sign-in, uploads, payments, AI) — it never swaps out these pieces.
 - **Better Auth owns anything that belongs to a user.** Where Better Auth has a plugin for an integration — payments above all — use the plugin, never the provider's standalone SDK wired in beside it. One source of truth for the user, one place customer ids and webhooks live.
 - Prefer choices that survive deployment. Where a feature works differently in production (uploads, Postgres), the local setup and the deployed setup must be the same code switched by an environment variable — never a second code path the user has to remember to change.
+- **Set up what the app needs to run; offer everything beyond that.** The database is needed — wire it up yourself with the `vercel` CLI and don't make it a conversation. Pushing to GitHub and deploying are not needed for a working app, so they are offered at hand-off and never done mid-build. This skill ends with something that runs on their machine, not with their business live on the internet.
+- **Do it if you can, guide if you can't, and always say which is happening.** Browser sign-ins can't be automated — `vercel login`, the Google Cloud console, a Polar or Stripe account. Say so plainly and offer to walk through it together, exactly as question 2 does for "Sign in with Google". Never pretend a step was done when the user has to do it.
+- **Run commands freely, describe them in outcomes.** *"I've set up your database — it's free, it's yours, and it's already connected to where the app will live"*, never *"running `vercel integration add neon` to provision a Postgres instance"*. Good test: if you can't say what you just did in one plain sentence, don't do it unasked.
+- **Four things are never done on your own initiative**, however easy the command is: creating an account or completing a login; anything that costs money, including leaving a free tier or buying a domain; anything that makes something public — the first deploy, a public repository; and attaching a domain, because their live business site is on the other end of that DNS record. Ask first, every time.
+- Prefer the `vercel` CLI for Vercel work. Use a Vercel MCP server if this agent has one, but never depend on it — availability differs per user and per tool. Never use raw API calls with a hand-pasted token: it puts a credential in the conversation to do what the CLI already has a session for.
 - All commands, package names, and config live in the reference files, never in this file. Load only the references for the branches the user chose.
 - If a reference command fails because a tool changed (renamed flag, different init flow), check that tool's official docs, use the current equivalent, finish the job, and tell the user at the end that this skill's reference file needs a refresh.
 
@@ -62,8 +67,9 @@ Now the branches. One at a time, each with a recommendation. **Don't ask what th
 
 1. **"Who's going to use it — just you for now, or other people / the public?"**
    → Just me / trying an idea: recommend **SQLite** ("your data lives in a simple file inside the project — nothing extra to install or run").
-   → Other people / production ambitions: recommend **Postgres** ("the database most real apps use — it runs in Docker on your machine, so it's one command to start and nothing is installed permanently, and it's the same database you'll use in production").
-   → Postgres needs Docker Desktop installed and running. Check before promising it; if they don't have it and don't want it, offer SQLite or a free hosted Postgres instead.
+   → Other people / production ambitions: recommend **Postgres** ("the database most real apps use — I'll set it up on a free hosted plan, where you get your own private copy to build against, so nothing you do here can touch the real thing").
+   → Default to **Neon through the Vercel marketplace**: free, nothing installed, and production and preview deployments are already wired up when you deploy. It needs a Vercel account and an internet connection — check that before promising it.
+   → If either is a problem, `references/database.md` has three alternatives that need neither: **Docker**, a **local Postgres server** installed as a package, or **PGlite** (Postgres inside the project, offline, nothing to install). Offer whichever fits their objection; don't make them choose from a menu.
 
 2. **"Do people need to sign in?"**
    → No accounts: skip auth entirely.
@@ -100,7 +106,7 @@ Restate the plan in plain words before touching anything. Example shape:
 >
 > Sound right?
 
-Include the data model and the explicit **not in version one** list — those two lines are what stop a rewrite later. Also mention anything that needs something from them before it can work (Docker running, an API key, a provider account), so there are no surprises mid-build.
+Include the data model and the explicit **not in version one** list — those two lines are what stop a rewrite later. Also mention anything that needs something from them before it can work (a Vercel account, Docker running, an API key, a provider account), so there are no surprises mid-build.
 
 Get a clear go-ahead. Adjust anything they push back on. If the answer reopens what the app *is* rather than tweaking a detail, go back to Step 1a — that's cheaper now than after the schema exists.
 
@@ -109,7 +115,7 @@ Get a clear go-ahead. Adjust anything they push back on. If the answer reopens w
 Work through these in order. Each reference has a **Verify** section — complete it before moving on. Every path in them is relative to the current working directory.
 
 1. Base project → `references/stack.md`
-2. Database (SQLite or Postgres-in-Docker branch) → `references/database.md`
+2. Database (SQLite or Postgres branch) → `references/database.md`
 3. Sign-in, if chosen (email+password, optionally Google) → `references/auth.md`
 4. File uploads, if chosen → `references/storage.md`
 5. Payments, if chosen → `references/payments.md` (requires step 3)
@@ -136,5 +142,9 @@ This is not a polish pass; it is most of the value. The scaffold in Step 3 is in
 - If uploads were chosen: uploading a file through the app's own UI saves it and it renders after a refresh.
 - If payments were chosen: the test-mode checkout completes and the paid state is visible server-side.
 - **Missing keys degrade, never crash.** With `.env` values absent, the app still starts and the affected feature shows a friendly "not configured yet" notice.
-- Close with a plain-language summary: how to start the app (including `pnpm db:up` if Postgres is in Docker), what each entry in `.env` is for, and two or three sensible next steps.
-- Where local and production differ, spell out the one-time switch: connect a Blob store for uploads, point `POSTGRES_URL` at a hosted database, swap payment keys out of test mode. Each is a setting on the host, not a code change — say that, because it's the part people expect to be hard.
+- Close with a plain-language summary: how to start the app (including `pnpm db:up` or `pnpm db:local` if the database runs on their machine), what each entry in `.env` is for, and two or three sensible next steps.
+- Where local and production differ, spell out the one-time switch: connect a Blob store for uploads, point `DATABASE_URL` at a hosted database if it isn't already, swap payment keys out of test mode. Each is a setting on the host, not a code change — say that, because it's the part people expect to be hard.
+- **Then offer the two things you deliberately didn't do**, one line each, and do neither without a clear yes:
+  - *"Want me to put this on GitHub, so there's a backup and a history of every change?"* → **private by default**, and say the visibility out loud before creating it: *"I'll make it private — only you can see it."* `gh repo create <name> --private --source . --push`. If they want it public, that's their call, but it should be a decision they made rather than a default they inherited.
+  - *"Want me to put it online so you can look at it on your phone?"* → `vercel deploy`. Say what a preview URL is in one sentence: a real web address, live now, that anyone with the link can open. That last part matters to a business owner and takes four words.
+- Deploying is where this skill stops. A real launch — a custom domain, going live with payments, search engines finding it — is its own conversation, and saying so is more useful than half-doing it.
