@@ -12,6 +12,7 @@ Turn an idea into a running web app through a short, friendly interview. The res
 - Explain every choice like you would to a smart friend who doesn't code. Say "a place to store your data" before saying "database". Introduce each technical term once, briefly, then use it normally.
 - Ask one question at a time. Always offer a recommended default so the user can just say "whatever you recommend".
 - Recommend, then respect. If the user picks the non-recommended option, go with it without relitigating.
+- The app is scaffolded **in the current working directory** — that folder is the project root. Never create a subfolder for it and never `cd` into one; the user already chose where the app goes by being there.
 - The stack is fixed: Next.js, TypeScript, Tailwind, shadcn/ui, Drizzle, Better Auth. The interview chooses *within* it (which database, what kind of sign-in, AI or not) — it never swaps out these pieces.
 - All commands, package names, and config live in the reference files, never in this file. Load only the references for the branches the user chose.
 - If a reference command fails because a tool changed (renamed flag, different init flow), check that tool's official docs, use the current equivalent, finish the job, and tell the user at the end that this skill's reference file needs a refresh.
@@ -48,7 +49,7 @@ Get a clear go-ahead. Adjust anything they push back on.
 
 ## Step 3 — Scaffold
 
-Work through these in order. Each reference has a **Verify** section — complete it before moving on.
+Work through these in order. Each reference has a **Verify** section — complete it before moving on. Every path in them is relative to the current working directory.
 
 1. Base project → `references/stack.md`
 2. Database (SQLite or Postgres branch) → `references/database.md`
