@@ -12,6 +12,7 @@ Turn an idea into a running web app. Understand the idea properly first, then bu
 ## Ground rules
 
 - Explain every choice like you would to a smart friend who doesn't code. Say "a place to store your data" before saying "database". Introduce each technical term once, briefly, then use it normally.
+- **Use their word for the thing.** If they call it a site, a system, or "the booking thing", call it that too. Saying "app" to someone who means a website — or who hears *phone app from the App Store* — quietly tells them this wasn't built for them.
 - **Dig until it's clear.** Follow up on vague answers rather than filling the gap with an assumption. "A site for my club" is not yet a spec — what does a member *do* there?
 - Ask about one topic at a time. During discovery, follow the conversation rather than reading from a list; for the technical choices, one question at a time with a recommended default so the user can just say "whatever you recommend".
 - Surface gaps as suggestions, not interrogation. "Most apps like this need a way to edit an entry after posting it — want that in the first version?" is better than a checklist, and it's where the user learns what they actually want.
@@ -40,7 +41,11 @@ Then *follow up*. Listen for the **nouns** (the things the app keeps track of) a
 - "Walk me through it — someone opens the app for the first time. What do they do?"
 - "And then what? What brings them back the next day?"
 - "When you say *[their vague word]* — what does that actually look like on screen?"
-- "Is there anything like this you already use, that this is better than?"
+- **"What are you doing about this today — a spreadsheet, a notebook, WhatsApp, nothing?"**
+
+That last one earns its place. Anyone running a business already has the process, just badly — and their spreadsheet columns *are* the data model, their WhatsApp group *is* the notification requirement. Ask to see it if they'll show you. You stop guessing at a schema and start reading one.
+
+It has a follow-up that decides whether the result is useful on day one: **"do you want what's already in there brought across?"** A business with four hundred customers opening an empty app has been handed a demo, not a tool. If the answer is yes, say plainly that importing is its own job and offer it as the first thing after the app works.
 
 **Then say the data model back to them in plain words** and let them correct it. This is the highest-value question in the whole skill, because people who can't design a schema can absolutely tell you what's wrong with one:
 
@@ -50,28 +55,30 @@ Then *follow up*. Listen for the **nouns** (the things the app keeps track of) a
 
 The user has told you the happy path. Your job is the rest. Run through these silently, and **raise only the ones that genuinely apply** — as a suggestion with a recommendation, not a quiz:
 
-- **Whose data is it?** Private to each user, shared with a team, or public? This decides every query in the app, and it's the one people forget to say.
+- **Who is this for, and whose data is it?** Their customers, their staff, or just them — and is what's stored private to each person, shared across the team, or public? Those three audiences are wildly different apps, and this is the one people forget to say. **Ask this one nearly always**: it decides every query in the app, and it also answers question 1 in Step 1c, so asking it well here means not asking it twice.
 - **Can things be changed?** Most descriptions only cover creating. Editing and deleting are usually wanted and almost never mentioned.
 - **Is anyone special?** An admin, a moderator, an owner who sees more than everyone else.
 - **What does day one look like?** The app opens with zero data. What should be on that screen?
 - **Anything time-based?** Due dates, reminders, recurring items, "this week" views.
 - **Does anyone need telling?** Email on signup, on invite, when something happens.
 - **Phone or desktop?** Changes layout decisions early and is cheap to ask.
+- **Anything sensitive in here?** Health details, children's information, card numbers. Only raise it when the subject matter suggests it — but when it applies it changes real decisions: card numbers are never stored (the payment provider holds them), sign-in defaults get stricter, and a record of who-changed-what starts being worth having in version one.
 - **What is deliberately *not* in version one?** Ask directly. Naming what's out is what keeps a first version shippable, and it gives you permission to leave things out instead of guessing.
 
-Two or three of these usually matter. Raising all eight is an interrogation — pick the ones that would change what you build.
+**Raise at most three.** Not "two or three usually" — three, hard, and the first and last on that list are normally two of them, which leaves you one free choice. Every one of these is a fair question and that is exactly the trap: nine fair questions in a row is an interrogation, and it's where someone who doesn't do this for a living decides the whole thing is too much like hard work. Pick the one that changes what you build; a gap found after the app exists is cheap to fill, and by then they'll be enjoying it.
 
 ## Step 1c — Technical choices
 
 Now the branches. One at a time, each with a recommendation. **Don't ask what they've already told you** — if the description made an answer obvious ("a paid newsletter", "a photo journal"), confirm it in passing instead: *"Sounds like people will be paying for this — I'll set that up."*
 
-1. **"Who's going to use it — just you for now, or other people / the public?"**
+1. **"Who's this for — your customers, your staff, or just you?"**
+   → **Usually already answered** by the first gap-check in Step 1b. If it is, don't ask again — confirm it in passing (*"since this is for your customers, I'll set up the sturdier kind of database"*) and move to question 2. Asking a second time is how someone decides you weren't listening.
    → Just me / trying an idea: recommend **SQLite** ("your data lives in a simple file inside the project — nothing extra to install or run").
    → Other people / production ambitions: recommend **Postgres** ("the database most real apps use — I'll set it up on a free hosted plan, where you get your own private copy to build against, so nothing you do here can touch the real thing").
    → Default to **Neon through the Vercel marketplace**: free, nothing installed, and production and preview deployments are already wired up when you deploy. It needs a Vercel account and an internet connection — check that before promising it.
    → If either is a problem, `references/database.md` has three alternatives that need neither: **Docker**, a **local Postgres server** installed as a package, or **PGlite** (Postgres inside the project, offline, nothing to install). Offer whichever fits their objection; don't make them choose from a menu.
 
-2. **"Do people need to sign in?"**
+2. **"Do people need their own login?"**
    → No accounts: skip auth entirely.
    → Yes: recommend **email + password** as the default ("works immediately, nothing to configure").
    → If they want "Sign in with Google": say yes, and set expectations — it needs a free Google Cloud setup with a few copy-paste steps; offer to walk through it together or add it later.
@@ -80,16 +87,16 @@ Now the branches. One at a time, each with a recommendation. **Don't ask what th
    → No: skip file storage entirely.
    → Yes: no decision to make, so don't offer one. Say what happens: "While you're building, uploads save into a folder in the project. When you deploy, they'll go to proper cloud storage automatically — same code, you just connect a store." Only mention Vercel Blob by name if they ask.
 
-4. **"Will people pay for anything — a subscription, or a one-off purchase?"**
+4. **"Will customers pay you through this — a subscription, or a one-off purchase?"**
    → No: skip payments entirely.
    → Yes: recommend **Polar** ("they handle sales tax and VAT worldwide for you, which is the part that usually bites"), with **Stripe** as the option if they already use it or need it.
    → Payments need accounts. If they said no to sign-in, say so plainly and add it: "we'll need accounts too, so the app knows whose subscription is whose."
    → Set expectations: everything is set up in test mode, no real money, and going live is a key swap later.
 
-5. **"Should the app have any AI features — like a chat, or generating text or content?"**
+5. **"Should it do anything with AI — like answering questions, or writing text for you?"**
    → Only include AI plumbing if yes. If yes, mention they'll need an OpenRouter API key (free to create) and you'll show them where to get it — one key, many models.
 
-6. **"When someone lands on the app signed out, what should they see?"**
+6. **"When someone who's never used this before arrives, what should they see first — a page explaining what it is, or straight into the thing itself?"**
    → Decides the front door: a real landing page for something other people will sign up for, or straight into the app for a personal tool. Don't assume a marketing page — `references/pages.md` has the call.
 
 7. **"Do you already have a website? Paste the address and I'll match your colours and fonts. If not — is there a site whose look you like?"** *(optional — one ask, then move on)*
@@ -104,6 +111,8 @@ Restate the plan in plain words before touching anything. Example shape:
 
 > Here's what I'll set up: **"TrailLog"** — a hiking journal, just for you.
 >
+> **Where it goes:** `H:\TrailLog` — that folder is empty, so the app will be created there.
+>
 > **What it remembers:** hikes — date, trail, distance, how it felt, and photos.
 > **What you can do:** log a hike, edit it later, delete one, see them newest-first.
 > **Signing in:** email and password, so it's yours alone.
@@ -114,6 +123,10 @@ Restate the plan in plain words before touching anything. Example shape:
 > Sound right?
 
 Include the data model and the explicit **not in version one** list — those two lines are what stop a rewrite later. Also mention anything that needs something from them before it can work (a Vercel account, Docker running, an API key, a provider account), so there are no surprises mid-build.
+
+**Say the full path, and say what is already in it.** Don't ask them to choose a folder — the app is created where the session already is, and an agent can't reliably write outside it. But they can't confirm a location they were never shown, and "wherever you happened to open the terminal" is not the same as a decision. One line, as above.
+
+If the folder already contains a project — a `package.json`, a `src/`, a `.git` with history — **stop and say so.** Do not scaffold over it. Ask them to open a new, empty folder and start again there. A few stray files (a `README.md`, notes, a `.gitignore`) are fine and `references/stack.md` handles them; an existing app is not, and merging into one is unrecoverable in a way nothing else in this skill is.
 
 Get a clear go-ahead. Adjust anything they push back on. If the answer reopens what the app *is* rather than tweaking a detail, go back to Step 1a — that's cheaper now than after the schema exists.
 
