@@ -1,6 +1,6 @@
 ---
 name: start-an-app
-description: Interview the user in depth about what they actually want to build, then scaffold a working full-stack web app around it. Use when the user wants to start a new app, website, prototype, or SaaS; when they don't know what tech stack to pick; or when they want a solid working starting point fast. Covers requirements discovery, project setup, database (SQLite, or Postgres on a free hosted branch, in Docker, or fully local), sign-in, file uploads, payments, AI features, and a real landing page and dashboard.
+description: Interview the user in depth about what they actually want to build, then scaffold a working full-stack web app around it. Use when the user wants to start a new app, website, prototype, or SaaS; when they don't know what tech stack to pick; or when they want a solid working starting point fast. Covers requirements discovery, project setup, database (SQLite, or Postgres on a free hosted branch, in Docker, or fully local), sign-in, file uploads, payments, AI features, an optional DESIGN.md extracted from an existing site's brand, and a real landing page and dashboard.
 ---
 
 # Start an App
@@ -92,6 +92,12 @@ Now the branches. One at a time, each with a recommendation. **Don't ask what th
 6. **"When someone lands on the app signed out, what should they see?"**
    → Decides the front door: a real landing page for something other people will sign up for, or straight into the app for a personal tool. Don't assume a marketing page — `references/pages.md` has the call.
 
+7. **"Do you already have a website? Paste the address and I'll match your colours and fonts. If not — is there a site whose look you like?"** *(optional — one ask, then move on)*
+   → A URL: extract the palette, type, shape and density from it and write them into a `DESIGN.md` the rest of the build obeys. `references/design.md`.
+   → A vibe instead ("like Linear", "warm and friendly", "expensive and quiet"): equally good input — same file, skip the extraction.
+   → Nothing, or "you decide": don't push. Write a short `DESIGN.md` from what the app *is*, which is what `references/pages.md` would have made you decide anyway.
+   → If they name someone else's site, say once that you'll take the feel and not the identity — no logo, images, copy or stylesheet — and carry on. Don't turn it into a lecture.
+
 ## Step 2 — Build sheet
 
 Restate the plan in plain words before touching anything. Example shape:
@@ -102,6 +108,7 @@ Restate the plan in plain words before touching anything. Example shape:
 > **What you can do:** log a hike, edit it later, delete one, see them newest-first.
 > **Signing in:** email and password, so it's yours alone.
 > **Photos:** saved in the project while you build; they move to cloud storage when you deploy.
+> **Look:** warm and quiet, built from the colours and type on your own site — written down in `DESIGN.md` so it stays consistent.
 > **Not in version one:** sharing hikes with friends, maps, and the stats page — easy to add once the basics feel right.
 >
 > Sound right?
@@ -120,9 +127,10 @@ Work through these in order. Each reference has a **Verify** section — complet
 4. File uploads, if chosen → `references/storage.md`
 5. Payments, if chosen → `references/payments.md` (requires step 3)
 6. AI features, if chosen → `references/ai.md`
-7. Landing page and dashboard → `references/pages.md`
+7. Design system → `references/design.md`
+8. Landing page and dashboard → `references/pages.md`
 
-The order matters: payments and uploads both extend what step 3 built, and step 7 needs all of it in place. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
+The order matters: payments and uploads both extend what step 3 built, step 7 must land before any page exists so everything inherits the tokens, and step 8 needs all of it in place. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
 
 ## Step 4 — Make it theirs
 
@@ -130,7 +138,7 @@ This is not a polish pass; it is most of the value. The scaffold in Step 3 is in
 
 - Name the project after their idea (package name, page titles, visible branding).
 - The schema tables are the **nouns** from Step 1a, with the ownership rule from Step 1b applied — a `userId` column and every query scoped to it if data is private.
-- Build the real pages: the front door and dashboard from `references/pages.md`, real navigation, and the **verbs** from Step 1a wired up — including editing and deleting if the gap-check said so.
+- Build the real pages: the front door and dashboard from `references/pages.md`, real navigation, and the **verbs** from Step 1a wired up — including editing and deleting if the gap-check said so. Everything visual comes from `DESIGN.md`; no page invents a colour.
 - Seed nothing generic: every visible string should make sense for *their* app. No "Item", no "Welcome to Next.js", no lorem ipsum.
 - Done when: someone opening the app would know what it is without being told, and the user can do the main thing the app exists for, end to end.
 
@@ -141,6 +149,7 @@ This is not a polish pass; it is most of the value. The scaffold in Step 3 is in
 - If sign-in was chosen: signing up, signing out, and signing back in works; `/dashboard` redirects when signed out and shows their own data when signed in.
 - If uploads were chosen: uploading a file through the app's own UI saves it and it renders after a refresh.
 - If payments were chosen: the test-mode checkout completes and the paid state is visible server-side.
+- `DESIGN.md` exists, `globals.css` matches it in both light and dark, and no component sets a colour outside the tokens.
 - **Missing keys degrade, never crash.** With `.env` values absent, the app still starts and the affected feature shows a friendly "not configured yet" notice.
 - Close with a plain-language summary: how to start the app (including `pnpm db:up` or `pnpm db:local` if the database runs on their machine), what each entry in `.env` is for, and two or three sensible next steps.
 - Where local and production differ, spell out the one-time switch: connect a Blob store for uploads, point `DATABASE_URL` at a hosted database if it isn't already, swap payment keys out of test mode. Each is a setting on the host, not a code change — say that, because it's the part people expect to be hard.
