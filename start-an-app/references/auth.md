@@ -38,8 +38,11 @@ Generate the auth tables into the Drizzle schema, then push:
 
 ```bash
 pnpm dlx @better-auth/cli@latest generate --config src/lib/auth.ts --output src/lib/db/auth-schema.ts -y
-pnpm db:push
+pnpm db:generate
+pnpm db:migrate
 ```
+
+(Two different "generate" steps, easy to confuse: the Better Auth CLI writes the Drizzle *table definitions*, then `db:generate` turns those into a *SQL migration*. Never `drizzle-kit push` — see `references/database.md`.)
 
 Re-export the generated tables from `src/lib/db/schema.ts` (`export * from "./auth-schema";`) so Drizzle sees them.
 
