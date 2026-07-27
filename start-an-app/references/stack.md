@@ -22,7 +22,11 @@ Then set the package name, because `.` makes `create-next-app` derive it from th
 npm pkg set name=my-app   # kebab-case version of the user's app name
 ```
 
-**If the command refuses because the directory isn't empty** (a stray `README.md`, notes, an existing `package.json`), do *not* fall back to a subfolder. Scaffold into a temporary directory and move the result up:
+**If the command refuses because the directory isn't empty, check what's in it first.**
+
+If the folder already holds a project — a `package.json`, a `src/`, a `.git` with commits — **stop.** Do not scaffold over it, and do not work around it. Name the folder, say what you found, and ask the user to open an empty folder and start again. Merging a fresh Next.js app into someone's existing repo is the one mistake in this skill that can't be undone.
+
+If it refused over **stray files** — a `README.md`, notes, a `.gitignore`, nothing that constitutes a project — carry on. Do *not* fall back to a subfolder; scaffold into a temporary directory and move the result up:
 
 ```bash
 npx create-next-app@latest .scaffold-tmp --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --turbopack --use-pnpm
