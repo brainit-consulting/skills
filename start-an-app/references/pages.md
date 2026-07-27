@@ -17,7 +17,11 @@ Do not reflexively build a marketing landing page. Pick from what the interview 
 
 A hiking journal for one person does not need a hero section and a pricing table. Building one is the single fastest way to make the result feel like a template. If the interview said "just me", skip straight to the app.
 
-## Styling: pick a direction, then be consistent
+## Styling: `DESIGN.md` decides, these pages obey
+
+`references/design.md` runs before this file and leaves a `DESIGN.md` at the project root. **Read it and follow it.** Where it and this section overlap, it wins — it has the actual palette, type and dials for this specific app, and it was written with the user in the room.
+
+Everything below is the fallback for a project without one, and the reasoning behind what `DESIGN.md` records.
 
 Choose **one** visual direction that fits what the app is, and say what you picked and why in one line. A developer tool, a children's reading tracker, and an invoicing app should not look alike.
 
@@ -96,3 +100,4 @@ Scope every query by the session user. On a multi-user app, a query that forgets
 - One user's data is not visible to another (create a second account and confirm).
 - Empty states read as intentional, not broken.
 - The app looks right in both light and dark mode, and at a narrow viewport.
+- Nothing on these pages contradicts `DESIGN.md`, and no component sets a colour outside its tokens.
