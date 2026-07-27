@@ -122,6 +122,8 @@ Restate the plan in plain words before touching anything. Example shape:
 >
 > Sound right?
 
+The example above is a personal tool. **When the app is for customers or staff, add the help line too** — *"a `?` in the corner opens a short guide, written from what you've just told me, so new staff can work it out without asking you"* — as something they can decline rather than something you ask about. `references/help.md` explains why it isn't a question.
+
 Include the data model and the explicit **not in version one** list — those two lines are what stop a rewrite later. Also mention anything that needs something from them before it can work (a Vercel account, Docker running, an API key, a provider account), so there are no surprises mid-build.
 
 **Say the full path, and say what is already in it.** Don't ask them to choose a folder — the app is created where the session already is, and an agent can't reliably write outside it. But they can't confirm a location they were never shown, and "wherever you happened to open the terminal" is not the same as a decision. One line, as above.
@@ -142,8 +144,9 @@ Work through these in order. Each reference has a **Verify** section — complet
 6. AI features, if chosen → `references/ai.md`
 7. Design system → `references/design.md`
 8. Landing page and dashboard → `references/pages.md`
+9. In-app help guide, if the app is for customers or staff → `references/help.md`
 
-The order matters: payments and uploads both extend what step 3 built, step 7 must land before any page exists so everything inherits the tokens, and step 8 needs all of it in place. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
+The order matters: payments and uploads both extend what step 3 built, step 7 must land before any page exists so everything inherits the tokens, step 8 needs all of it in place, and step 9 documents what step 8 actually built rather than what was planned. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
 
 ## Step 4 — Make it theirs
 
@@ -153,6 +156,7 @@ This is not a polish pass; it is most of the value. The scaffold in Step 3 is in
 - The schema tables are the **nouns** from Step 1a, with the ownership rule from Step 1b applied — a `userId` column and every query scoped to it if data is private.
 - Build the real pages: the front door and dashboard from `references/pages.md`, real navigation, and the **verbs** from Step 1a wired up — including editing and deleting if the gap-check said so. Everything visual comes from `DESIGN.md`; no page invents a colour.
 - Seed nothing generic: every visible string should make sense for *their* app. No "Item", no "Welcome to Next.js", no lorem ipsum.
+- If the help guide was built, its chapters are written here too — from the interview, in their words. Done when every **verb** from Step 1a has one.
 - Done when: someone opening the app would know what it is without being told, and the user can do the main thing the app exists for, end to end.
 
 ## Step 5 — Verify and hand off
@@ -163,6 +167,7 @@ This is not a polish pass; it is most of the value. The scaffold in Step 3 is in
 - If uploads were chosen: uploading a file through the app's own UI saves it and it renders after a refresh.
 - If payments were chosen: the test-mode checkout completes and the paid state is visible server-side.
 - `DESIGN.md` exists, `globals.css` matches it in both light and dark, and no component sets a colour outside the tokens.
+- If the help guide was built: `?` opens it, every verb from Step 1a has a chapter, and it reopens where the user left it.
 - **Missing keys degrade, never crash.** With `.env` values absent, the app still starts and the affected feature shows a friendly "not configured yet" notice.
 - Close with a plain-language summary: how to start the app (including `pnpm db:up` or `pnpm db:local` if the database runs on their machine), what each entry in `.env` is for, and two or three sensible next steps.
 - Where local and production differ, spell out the one-time switch: connect a Blob store for uploads, point `DATABASE_URL` at a hosted database if it isn't already, swap payment keys out of test mode. Each is a setting on the host, not a code change — say that, because it's the part people expect to be hard.
