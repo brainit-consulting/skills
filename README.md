@@ -1,6 +1,6 @@
 # skills
 
-Agent Skills — a fork of [leonvanzyl/skills](https://github.com/leonvanzyl/skills), maintained by Emile du Toit (DreamForge Software).
+Agent Skills — a fork of [leonvanzyl/skills](https://github.com/leonvanzyl/skills), maintained by Emile du Toit, BrainIT Consulting.
 
 Upstream is kept as a git remote so his updates can be pulled in:
 
@@ -13,6 +13,12 @@ git fetch upstream && git merge upstream/main
 ### `start-an-app`
 
 Interviews the user about what they actually want to build, then scaffolds a working full-stack Next.js app around it — database, sign-in, uploads, payments, AI, landing page and dashboard. The interview is the valuable part; the scaffold is meant to look like *their* app from the first commit, not a template.
+
+### `security-scanner`
+
+OWASP Top 10:2025 audit of any codebase, in any language — eleven reference files of CWEs and detection patterns, severity scoring, and a dated markdown report. Imported from Leon's [agentic-coding-starter-kit](https://github.com/leonvanzyl/agentic-coding-starter-kit) with his permission.
+
+It's here because **`start-an-app` checks that what it built works, never that it is safe** — and it's routinely used to build apps holding a small business's customer records. Run it once the app is real: most of what A01 and A07 look for doesn't exist until sign-in works and there's data in the database.
 
 ## What this fork changes
 
@@ -68,6 +74,18 @@ Step 1b's soft "two or three usually matter" is now a hard cap of three, because
 
 **Scaffolding into an existing project is now a stop, not a merge.** Upstream listed "an existing `package.json`" among the cases to work around by scaffolding to a temp dir and moving the result up — which silently splices a fresh Next.js app into someone's repo if the skill is fired in the wrong folder. Stray files still merge; a real project halts. The build sheet also states the absolute target path and what's in it, so the user confirms a location instead of inheriting whichever directory the session opened in.
 
+### An in-app help guide, written from the interview
+
+Apps built for customers or staff get a `?` in the navbar that opens a guide explaining the app in the owner's own words.
+
+The reason it belongs in this skill rather than in a component library: Step 1a already produced a description of the app in the owner's words, its nouns, its verbs, and a walkthrough of a first visit — **a user guide with the labels changed**, thrown away today the moment the build sheet is agreed. The first-visit walkthrough becomes *Getting started*, each verb becomes a chapter, the ownership answer becomes *Who sees what*.
+
+It matters most for small businesses, where the person who commissioned the app isn't the person using it in six months and "ask the owner how it works" doesn't survive staff turnover.
+
+**No new question.** Question 1 already says customers / staff / just you — the first two get a guide, the third doesn't. It appears on the build sheet as something to decline.
+
+`references/help.md` pins down where this gets built badly: build on shadcn's `Dialog` so the focus trap, Esc and `aria-modal` come free; 80% of the viewport is the *starting* size, not a fixed one; persist position and size but **clamp on every open**, or a box saved on a 32-inch monitor opens off-screen on a laptop the next morning; full-screen sheet with no dragging below `md`, because touch-drag fights scrolling and scrolling should win; and nothing may require dragging to reach.
+
 ### Rules for when the agent may use real tooling
 
 Upstream's scaffold path touched nothing but `npx` and `pnpm`. Putting Neon behind the Vercel CLI crosses that line, so this fork names the rule instead of leaving it implicit. The test is **does the app run without it?**
@@ -93,5 +111,8 @@ A plain copy works too, but then edits here don't reach the installed copy.
 
 ## Credits
 
+Licensed [MIT](LICENSE). Contributions upstream are made as Emile du Toit, BrainIT Consulting ([github.com/brainit-consulting](https://github.com/brainit-consulting)).
+
 - [leonvanzyl/skills](https://github.com/leonvanzyl/skills) — the upstream skill this forks.
+- [leonvanzyl/agentic-coding-starter-kit](https://github.com/leonvanzyl/agentic-coding-starter-kit) — `security-scanner` is Leon's, imported with his permission and unchanged apart from an attribution note and a section on pairing it with `start-an-app`.
 - [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) (MIT, © 2026 Leonxlnx) — `references/design.md` adapts its `stitch-skill` `DESIGN.md` export format, its three dials, and its anti-pattern list. `design.md` works standalone; taste-skill is an optional install for deeper front-door work, and the two divide as **`DESIGN.md` owns the facts, taste-skill owns the craft**.
