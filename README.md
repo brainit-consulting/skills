@@ -20,6 +20,16 @@ OWASP Top 10:2025 audit of any codebase, in any language — eleven reference fi
 
 It's here because **`start-an-app` checks that what it built works, never that it is safe** — and it's routinely used to build apps holding a small business's customer records. Run it once the app is real: most of what A01 and A07 look for doesn't exist until sign-in works and there's data in the database.
 
+### `app-health-check`
+
+Reviews an existing app across three lenses — security, code quality, and UI/UX — and writes a dated report to `audit/YYYY-MM-DD.md`, then offers to fix the high-confidence findings. Model-invoked: it triggers on "audit my app", "is this any good", "find the tech debt", without being asked for by name.
+
+### `mobile-web-polish`
+
+Apple Human Interface Guidelines for the web: builds and reviews frontends so they feel native on iPhone, iPad and Safari while staying clean everywhere else. Five reference files covering safe areas and the notch, viewport and URL-bar behaviour, tap-target sizing, Retina canvas rendering, and touch versus pointer input.
+
+Both of these previously lived only in an install directory under two names that collided with different skills in [DreamForgeSoftwareAgentSkills](https://github.com/brainit-consulting/DreamForgeSoftwareAgentSkills) — `audit-my-app` and `apple-hig-compliance`, which are a slash-command audit dispatcher and a WCAG compliance auditor respectively. Same names, different jobs. These two were renamed because they are the pair that wasn't published anywhere.
+
 ## What this fork changes
 
 ### The dev database no longer leads with Docker

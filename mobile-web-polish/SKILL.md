@@ -1,5 +1,5 @@
 ---
-name: apple-hig-compliance
+name: mobile-web-polish
 description: Build modern, mobile-responsive websites and webapps that feel native on Apple devices (iPhone, iPad, Mac) while staying clean on Windows desktops and other platforms. Use whenever the user is creating, polishing, or auditing a frontend that will be viewed on an iPhone, iPad, Safari, or any touch device — even if they don't say "HIG". Triggers on phrases like "make it look good on iPhone", "iOS polish", "responsive design", "fix mobile layout", "the URL bar is covering my content", "add to home screen", "notch/Dynamic Island", "tap targets", "Retina/HiDPI", "Safari", "iPad layout", or any time a site needs to work across desktop and Apple mobile. Apply proactively when reviewing or shipping any responsive web UI — undertriggering this skill leaves real iOS bugs (URL-bar overlap, notch clipping, undersized tap targets, blurry Retina canvases, gray tap flashes, hover-only affordances) on the floor.
 ---
 
