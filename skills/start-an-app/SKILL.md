@@ -62,8 +62,9 @@ Now the branches. One at a time, each with a recommendation. **Don't ask what th
 
 1. **"Who's going to use it — just you for now, or other people / the public?"**
    → Just me / trying an idea: recommend **SQLite** ("your data lives in a simple file inside the project — nothing extra to install or run").
-   → Other people / production ambitions: recommend **Postgres** ("the database most real apps use — it runs in Docker on your machine, so it's one command to start and nothing is installed permanently, and it's the same database you'll use in production").
-   → Postgres needs Docker Desktop installed and running. Check before promising it; if they don't have it and don't want it, offer SQLite or a free hosted Postgres instead.
+   → Other people / production ambitions: recommend **Postgres** ("the database most real apps use — and the same one you'll use in production").
+   → Postgres runs one of two ways while they build, and `references/database.md` has both. **Free hosted on Neon, through the Vercel marketplace** — nothing installed, nothing to keep running, their own private copy to build against, and production already wired when they deploy; it needs a Vercel account and an internet connection, so check with `vercel whoami` before promising it. Or **in Docker on their machine**, which needs Docker Desktop installed and running — check that before promising it too.
+   → Don't offer this as a menu. Pick the one that fits what you already know about them, say it in a sentence, and move on; if the check fails, the other one is right there.
 
 2. **"Do people need to sign in?"**
    → No accounts: skip auth entirely.
