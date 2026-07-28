@@ -12,6 +12,12 @@ A deploy that skips this file does not error. It builds, it goes green, the URL 
 
 So: **check before deploying, and verify on the live URL afterwards.** Not locally. Locally it already works; that is the problem.
 
+## If the app was built on the SQLite branch, start here
+
+SQLite lives in a file inside the project. A deployment's filesystem is read-only or ephemeral and every instance gets its own, so the file either cannot be written or silently stops being shared — and data appears to vanish between requests.
+
+**Deploying a SQLite app means moving it to Postgres first**, which is the Postgres branch of `references/database.md` with a hosted connection string: same Drizzle schema, same queries, `pnpm db:generate` and `pnpm db:migrate` against the new database, and the driver swapped in `src/lib/db/index.ts`. Say this plainly and early rather than after a confusing deploy. It is a twenty-minute job, and it is far easier before there is data in the file worth keeping.
+
 ## Step 1 — What does the app actually read?
 
 Find every environment variable the source depends on:
