@@ -38,6 +38,7 @@ Both the `:root` and `.dark` blocks exist. Whatever you change, check the app in
 Rules that hold regardless of direction:
 
 - Use shadcn components (`pnpm dlx shadcn@latest add ...`) rather than hand-rolling buttons and inputs. Add only what the pages actually use.
+- **`Button` has no `asChild`.** Current shadcn generates Base UI components, not Radix, so the reflex `<Button asChild><Link /></Button>` fails type-checking outright. Put the exported `buttonVariants` on the link instead — `<Link className={buttonVariants({ variant: "outline" })}>` — which is also one element fewer.
 - Give the app real spacing. Cramped, full-width, edge-to-edge content is the clearest tell of a scaffold: constrain the content width and let it breathe.
 - Every list needs an **empty state** — the first thing the user sees is zero rows, and "nothing here yet, add your first hike" is the difference between working and broken-looking.
 - Responsive from the start. Check one narrow viewport before calling it done.

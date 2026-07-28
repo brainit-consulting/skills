@@ -87,6 +87,13 @@ function defaultBox(): Box {
 }
 ```
 
+**Two things in shadcn's `DialogContent` will silently break the window**, and both cost an hour if you meet them by surprise:
+
+- It centres itself with `-translate-x-1/2 -translate-y-1/2`, which in **Tailwind v4 compiles to the `translate` property, not `transform`.** Setting `transform: "none"` inline therefore does nothing and the window opens half its own size off the top-left corner. Set **`translate: "none"`** as well.
+- Its open animation (`zoom-in-95`) leaves a **permanent `scale(0.95)`** on the element. The painted box and the layout box then disagree by 5%, so every drag and resize drifts. Kill it with `!animate-none` on the desktop variant — which also suits a system whose motion dial is near zero.
+
+Both are invisible until measured: the window looks roughly right and behaves subtly wrong. Check `getBoundingClientRect()` against the intended box rather than trusting your eyes.
+
 - **80% of the viewport is the starting size, not a fixed one.** `defaultBox()` on first open; after that, whatever the user left it as.
 - **Persist position and size** to `localStorage` under one key, and **clamp on every open**. A box saved on a 32-inch monitor must not open off-screen on a laptop the next morning — this is the bug that makes people stop using the feature, and it only shows up on the second device.
 - **Drag from the header only**, with `pointerdown` → `setPointerCapture` → `pointermove`. Capturing the pointer is what stops the drag dying when the cursor outruns the header.
@@ -118,6 +125,7 @@ A guide that describes the app as it was on day one is worse than none, because 
 - `?` in the navbar opens the guide; Esc closes it; focus lands back on the `?` button.
 - Every verb from the interview has a chapter, and every chapter is in the owner's language — no "click the button to submit the form".
 - Move and resize the window, close it, reopen it: it comes back where it was left.
+- Measure it: `getBoundingClientRect()` matches the intended box and `transform` computes to `none`. A window that looks fine but reports 95% of its size will drift on every drag.
 - Save a large box, then narrow the browser to a laptop width and reopen: the guide is fully on screen.
 - At 390px wide it is a full-screen sheet, scrolls normally, and has no drag handles.
 - An empty state somewhere links into a chapter with `?help=<id>` and opens on that chapter.
