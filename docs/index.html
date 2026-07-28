@@ -55,8 +55,10 @@
   }
   h1 em{font-style:italic; color:var(--gold)}
   .standfirst{font-size:clamp(1.05rem,2vw,1.28rem); color:var(--ink-soft); max-width:56ch; margin:0 0 2rem; font-weight:300}
-  .facts{display:flex; flex-wrap:wrap; gap:0 2.5rem; list-style:none; padding:0; margin:0; font-size:1rem; color:var(--muted)}
-  .facts li{padding:.35rem 0}
+  .facts{display:flex; flex-wrap:wrap; gap:0 2rem; list-style:none; padding:0; margin:0; font-size:.93rem; color:var(--muted)}
+  /* nowrap per item: the row may wrap between facts on a narrow screen,
+     but never mid-phrase */
+  .facts li{padding:.35rem 0; white-space:nowrap}
   .facts b{color:var(--ink); font-weight:500}
 
   /* ---------- layout ---------- */
@@ -281,9 +283,21 @@
         <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
           <path d="M0,0 L9,4.5 L0,9 z" fill="#b8721f"/>
         </marker>
+        <radialGradient id="forge" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#e09036" stop-opacity=".30"/>
+          <stop offset="45%" stop-color="#e09036" stop-opacity=".14"/>
+          <stop offset="80%" stop-color="#c47a2c" stop-opacity=".05"/>
+          <stop offset="100%" stop-color="#e09036" stop-opacity="0"/>
+        </radialGradient>
       </defs>
+      <!-- forge glow: painted first so the orbit line reads on top of it -->
+      <g class="pulse">
+        <circle cx="320" cy="150" r="150" fill="url(#forge)"/>
+        <circle cx="320" cy="150" r="118" fill="none" stroke="#e09036" stroke-width=".9" opacity=".30"/>
+        <circle cx="320" cy="150" r="84" fill="none" stroke="#e09036" stroke-width=".9" opacity=".20"/>
+        <circle cx="320" cy="150" r="50" fill="none" stroke="#e09036" stroke-width=".9" opacity=".12"/>
+      </g>
       <ellipse cx="320" cy="150" rx="230" ry="104" fill="none" stroke="#e09036" stroke-width="1.4" class="dash" opacity=".85" marker-end="url(#ar)"/>
-      <circle cx="320" cy="150" r="150" fill="#e09036" opacity=".05" class="pulse"/>
 
       <g font-family="Outfit,sans-serif">
         <g>
