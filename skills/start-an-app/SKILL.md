@@ -131,6 +131,7 @@ This is not a polish pass; it is most of the value. The scaffold in Step 3 is in
 ## Step 5 — Verify and hand off
 
 - The dev server starts cleanly and the home page renders.
+- `pnpm lint` passes. Next no longer runs ESLint as part of `next build`, so a build that goes green is not evidence of a clean project — a broken hook rule sails straight through it. If anything is left failing, name it at hand-off rather than leaving it to be found later.
 - `drizzle/` contains generated migration files, `pnpm db:migrate` has been run, and creating one real record works end to end. No schema was ever pushed.
 - If sign-in was chosen: signing up, signing out, and signing back in works; `/dashboard` redirects when signed out and shows their own data when signed in.
 - If uploads were chosen: uploading a file through the app's own UI saves it and it renders after a refresh.
