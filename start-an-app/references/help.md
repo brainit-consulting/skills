@@ -64,7 +64,7 @@ Deep-link with `?help=<id>` so the app can point at a chapter from an empty stat
 
 ## The window
 
-Build on shadcn's `Dialog`. **Do not hand-roll the modal** — Radix gives you the focus trap, Esc, `aria-modal` and scroll locking, and losing those is invisible until a keyboard or screen-reader user hits it. Add dragging and resizing to the content wrapper; keep the primitive underneath.
+Build on shadcn's `Dialog`. **Do not hand-roll the modal** — whichever primitive shadcn generates for the project (currently Base UI; older projects have Radix) gives you the focus trap, Esc, `aria-modal` and scroll locking for free, and losing those is invisible until a keyboard or screen-reader user hits it. Add dragging and resizing to the content wrapper; keep the primitive underneath.
 
 ```tsx
 // src/components/help/help-dialog.tsx  (shape, not gospel — adapt to the project)

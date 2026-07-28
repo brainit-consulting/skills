@@ -8,7 +8,7 @@ Last verified: 2026-07-21
 
 **The app is created in the current working directory, never in a subfolder.** The user is already standing in the folder they want the app to live in, so `package.json`, `src/`, and `next.config.ts` belong at its top level. Passing `.` as the project name does this — and there is no `cd` afterwards.
 
-Use pnpm if available, otherwise npm.
+**Use pnpm if available, otherwise npm** — and if it's npm, drop `--use-pnpm` from the commands below and read every later `pnpm x` in this skill as `npm run x` (`pnpm dlx` becomes `npx`). The commands are written for pnpm because it's the recommended path; they are not a requirement, and a Verify step that checks `pnpm dev` on an npm project is checking the wrong thing.
 
 **Check the folder name first.** `.` makes `create-next-app` derive the package name from the folder, and npm rejects names with **capital letters**, spaces, or a leading dot — so in `H:\GroomRoom` or `~/MyApp` the command fails outright with *"name can no longer contain capital letters"* before anything is created. Folders named after the app are exactly the common case, so check rather than discover.
 
@@ -45,10 +45,20 @@ If it refused over **stray files** — a `README.md`, notes, a `.gitignore`, not
 
 ```bash
 npx create-next-app@latest scaffold-tmp --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --turbopack --use-pnpm
-shopt -s dotglob && mv scaffold-tmp/* . && rmdir scaffold-tmp
 ```
 
-Resolve collisions deliberately rather than letting `mv` decide: keep the user's existing file where it has content worth keeping (their `README.md`), take the scaffold's otherwise, and merge `.gitignore` by hand if both exist.
+**Look before you move.** `mv` silently overwrites, so decide about collisions while both files still exist — not afterwards, when the user's version is already gone:
+
+```bash
+shopt -s dotglob
+for f in scaffold-tmp/*; do [ -e "./$(basename "$f")" ] && echo "COLLIDES: $(basename "$f")"; done
+```
+
+Move the non-colliding files, then handle each collision deliberately: keep the user's file where it has content worth keeping (their `README.md`), take the scaffold's otherwise, and merge `.gitignore` by hand if both exist. Only then:
+
+```bash
+rmdir scaffold-tmp
+```
 
 Initialize shadcn/ui with defaults:
 

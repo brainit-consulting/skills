@@ -77,7 +77,7 @@ Walk the user through it — plain language, one step at a time:
 1. Open https://console.cloud.google.com/ and create a project (any name).
 2. Go to **APIs & Services → OAuth consent screen**, choose External, fill in just the app name and your email.
 3. Go to **APIs & Services → Credentials → Create Credentials → OAuth client ID**, type **Web application**.
-4. Add authorized redirect URI: `http://localhost:3000/api/auth/callback/google`.
+4. Add authorized redirect URI: `http://localhost:<the port the dev server actually got>/api/auth/callback/google` — the same port as `BETTER_AUTH_URL` above, not 3000 by assumption. Google matches the redirect URI **exactly, including the port**, so a dev server that moved to 3001 fails with `redirect_uri_mismatch` and nothing in that message mentions ports. Add a second URI for each port they realistically use rather than editing it every time.
 5. Copy the Client ID and Client Secret into `.env`:
 
 ```
