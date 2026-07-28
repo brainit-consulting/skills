@@ -87,6 +87,12 @@ Now the branches. One at a time, each with a recommendation. **Don't ask what th
 6. **"When someone lands on the app signed out, what should they see?"**
    → Decides the front door: a real landing page for something other people will sign up for, or straight into the app for a personal tool. Don't assume a marketing page — `references/pages.md` has the call.
 
+7. **"Do you already have a website? Paste the address and I'll match your colours and fonts. If not — is there a site whose look you like?"** *(optional — one ask, then move on)*
+   → A URL: extract the palette, type, shape and density from it and write them into a `DESIGN.md` the rest of the build obeys. `references/design.md`.
+   → A vibe instead ("like Linear", "warm and friendly", "expensive and quiet"): equally good input — same file, skip the extraction.
+   → Nothing, or "you decide": don't push. Write a short `DESIGN.md` from what the app *is*, which is what `references/pages.md` would have made you decide anyway.
+   → If they name someone else's site, say once that you'll take the feel and not the identity — no logo, images, copy or stylesheet — and carry on. Don't turn it into a lecture.
+
 ## Step 2 — Build sheet
 
 Restate the plan in plain words before touching anything. Example shape:
@@ -110,14 +116,15 @@ Get a clear go-ahead. Adjust anything they push back on. If the answer reopens w
 Work through these in order. Each reference has a **Verify** section — complete it before moving on. Every path in them is relative to the current working directory.
 
 1. Base project → `references/stack.md`
-2. Database (SQLite or Postgres-in-Docker branch) → `references/database.md`
+2. Database (SQLite or Postgres branch) → `references/database.md`
 3. Sign-in, if chosen (email+password, optionally Google) → `references/auth.md`
 4. File uploads, if chosen → `references/storage.md`
 5. Payments, if chosen → `references/payments.md` (requires step 3)
 6. AI features, if chosen → `references/ai.md`
-7. Landing page and dashboard → `references/pages.md`
+7. Design system, if question 7 got an answer → `references/design.md`
+8. Landing page and dashboard → `references/pages.md`
 
-The order matters: payments and uploads both extend what step 3 built, and step 7 needs all of it in place. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
+The order matters: payments and uploads both extend what step 3 built, step 7 must land before any page exists so everything inherits the tokens, and step 8 needs all of it in place. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
 
 ## Step 4 — Make it theirs
 
