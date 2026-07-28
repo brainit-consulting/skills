@@ -27,10 +27,12 @@
     --measure:68ch;
   }
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth; scroll-padding-top:2rem}
+  /* Root is 19px, not the 16px default: every rem in this stylesheet scales
+     from here, so the whole page grows together rather than one piece at a time. */
+  html{font-size:19px; scroll-behavior:smooth; scroll-padding-top:2rem}
   body{
     margin:0; background:var(--paper); color:var(--ink);
-    font-family:var(--body); font-weight:400; font-size:17px; line-height:1.65;
+    font-family:var(--body); font-weight:400; font-size:1rem; line-height:1.65;
     -webkit-font-smoothing:antialiased;
   }
   /* paper grain */
@@ -44,22 +46,22 @@
   /* ---------- masthead ---------- */
   header.masthead{padding:clamp(3rem,9vh,7rem) 0 clamp(2rem,5vh,4rem); border-bottom:1px solid var(--rule)}
   .eyebrow{
-    font-size:.75rem; letter-spacing:.22em; text-transform:uppercase; color:var(--gold);
+    font-size:.85rem; letter-spacing:.22em; text-transform:uppercase; color:var(--gold);
     font-weight:500; margin:0 0 1.5rem;
   }
   h1{
-    font-family:var(--display); font-weight:600; font-size:clamp(2.8rem,7.5vw,5.2rem);
-    line-height:1.02; letter-spacing:-.02em; margin:0 0 1.25rem; max-width:16ch;
+    font-family:var(--display); font-weight:600; font-size:clamp(2.8rem,7.2vw,5rem);
+    line-height:1.04; letter-spacing:-.02em; margin:0 0 1.25rem; max-width:26ch;
   }
   h1 em{font-style:italic; color:var(--gold)}
   .standfirst{font-size:clamp(1.05rem,2vw,1.28rem); color:var(--ink-soft); max-width:56ch; margin:0 0 2rem; font-weight:300}
-  .facts{display:flex; flex-wrap:wrap; gap:0 2.5rem; list-style:none; padding:0; margin:0; font-size:.9rem; color:var(--muted)}
+  .facts{display:flex; flex-wrap:wrap; gap:0 2.5rem; list-style:none; padding:0; margin:0; font-size:1rem; color:var(--muted)}
   .facts li{padding:.35rem 0}
   .facts b{color:var(--ink); font-weight:500}
 
   /* ---------- layout ---------- */
   .cols{display:grid; grid-template-columns:1fr; gap:3rem; padding:3rem 0 6rem}
-  @media(min-width:1000px){ .cols{grid-template-columns:250px minmax(0,1fr); gap:4rem} }
+  @media(min-width:1000px){ .cols{grid-template-columns:265px minmax(0,1fr); gap:4rem} }
 
   nav.toc{position:sticky; top:2rem; align-self:start; font-size:1rem; display:none}
   @media(min-width:1000px){ nav.toc{display:block} }
@@ -88,8 +90,8 @@
     display:grid; place-items:center; background:var(--gold-wash);
   }
   h2{font-family:var(--display); font-weight:600; font-size:clamp(1.9rem,4vw,2.7rem); line-height:1.1; letter-spacing:-.015em; margin:0}
-  h3{font-family:var(--body); font-weight:600; font-size:1.06rem; letter-spacing:-.005em; margin:2.4rem 0 .6rem}
-  h4{font-family:var(--body); font-weight:600; font-size:.95rem; margin:1.6rem 0 .4rem}
+  h3{font-family:var(--body); font-weight:600; font-size:1.12rem; letter-spacing:-.005em; margin:2.4rem 0 .6rem}
+  h4{font-family:var(--body); font-weight:600; font-size:1.02rem; margin:1.6rem 0 .4rem}
   p{max-width:var(--measure); margin:0 0 1.1rem}
   .lede{font-size:1.12rem; color:var(--ink-soft); font-weight:300; max-width:60ch}
   a{color:var(--gold); text-underline-offset:3px; text-decoration-thickness:1px}
@@ -103,14 +105,14 @@
   .code{
     position:relative; background:#2c261f; color:#f2eee9; border-radius:8px;
     padding:1rem 3.2rem 1rem 1.1rem; margin:0 0 1.1rem; max-width:var(--measure);
-    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:.855rem; line-height:1.6;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:.94rem; line-height:1.6;
     overflow-x:auto; box-shadow:var(--shadow);
   }
   .code .c{color:#a89f94}
   .code b{color:var(--gold-bright); font-weight:500}
   .copy{
     position:absolute; top:.55rem; right:.55rem; background:rgba(255,255,255,.07); color:#cfc7bd;
-    border:1px solid rgba(255,255,255,.12); border-radius:5px; font:inherit; font-size:.7rem;
+    border:1px solid rgba(255,255,255,.12); border-radius:5px; font:inherit; font-size:.8rem;
     padding:.25rem .5rem; cursor:pointer; transition:background .15s,color .15s;
   }
   .copy:hover{background:rgba(224,144,54,.22); color:#fff}
@@ -127,7 +129,7 @@
   }
   .note p:last-child{margin-bottom:0}
   .note .tag{
-    display:block; font-size:.68rem; letter-spacing:.16em; text-transform:uppercase;
+    display:block; font-size:.79rem; letter-spacing:.16em; text-transform:uppercase;
     color:var(--gold); font-weight:600; margin-bottom:.4rem;
   }
   .note.plain{border-left-color:var(--rule-strong); background:transparent; border-left-style:dashed}
@@ -141,7 +143,7 @@
   }
   .card:hover{transform:translateY(-2px); border-color:var(--gold-bright); box-shadow:0 12px 30px -14px rgba(184,114,31,.4)}
   .card h4{margin:0 0 .35rem; font-size:1rem}
-  .card p{font-size:.92rem; color:var(--ink-soft); margin:0}
+  .card p{font-size:.98rem; color:var(--ink-soft); margin:0}
   .card .say{
     display:block; margin-top:.7rem; padding-top:.7rem; border-top:1px dashed var(--rule-strong);
     font-family:var(--display); font-style:italic; font-size:1.02rem; color:var(--gold); line-height:1.4;
@@ -150,22 +152,22 @@
   /* ---------- answers ---------- */
   .qa{border-top:1px solid var(--rule); padding:1.5rem 0 .4rem; max-width:var(--measure)}
   .qa .q{font-family:var(--display); font-size:1.35rem; font-weight:600; margin:0 0 1rem; line-height:1.25}
-  .qa .q span{color:var(--gold); font-size:.8rem; font-family:var(--body); font-weight:600; letter-spacing:.1em; display:block; margin-bottom:.3rem}
+  .qa .q span{color:var(--gold); font-size:.88rem; font-family:var(--body); font-weight:600; letter-spacing:.1em; display:block; margin-bottom:.3rem}
   .ans{display:grid; gap:.7rem; margin-bottom:.9rem}
   @media(min-width:640px){ .ans{grid-template-columns:1fr 1fr} }
-  .ans div{padding:.8rem .95rem; border-radius:7px; font-size:.92rem; line-height:1.55}
+  .ans div{padding:.85rem 1rem; border-radius:7px; font-size:.99rem; line-height:1.58}
   .ans .weak{background:rgba(35,31,26,.04); color:var(--muted)}
   .ans .good{background:var(--paper-2); border:1px solid var(--gold-bright); color:var(--ink)}
-  .ans .lbl{display:block; font-size:.65rem; letter-spacing:.15em; text-transform:uppercase; font-weight:600; margin-bottom:.35rem}
+  .ans .lbl{display:block; font-size:.76rem; letter-spacing:.15em; text-transform:uppercase; font-weight:600; margin-bottom:.35rem}
   .ans .weak .lbl{color:var(--muted)}
   .ans .good .lbl{color:var(--gold)}
-  .why{font-size:.9rem; color:var(--ink-soft)}
+  .why{font-size:.99rem; color:var(--ink-soft)}
   .why b{color:var(--ink)}
 
   /* ---------- figures ---------- */
   figure{margin:2rem 0; max-width:var(--measure)}
   figure svg{width:100%; height:auto; display:block}
-  figcaption{font-size:.83rem; color:var(--muted); margin-top:.7rem; font-style:italic; font-family:var(--display); font-size:1rem}
+  figcaption{color:var(--muted); margin-top:.7rem; font-style:italic; font-family:var(--display); font-size:1.1rem}
 
   .dash{stroke-dasharray:5 5; animation:march 22s linear infinite}
   @keyframes march{to{stroke-dashoffset:-200}}
@@ -173,9 +175,9 @@
   @keyframes pulse{0%,100%{opacity:.25}50%{opacity:.75}}
 
   /* ---------- table ---------- */
-  table{border-collapse:collapse; width:100%; max-width:var(--measure); font-size:.92rem; margin:0 0 1.2rem}
-  th,td{text-align:left; padding:.6rem .7rem; border-bottom:1px solid var(--rule); vertical-align:top}
-  th{font-weight:600; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+  table{border-collapse:collapse; width:100%; max-width:var(--measure); font-size:.99rem; margin:0 0 1.2rem}
+  th,td{text-align:left; padding:.65rem .7rem; border-bottom:1px solid var(--rule); vertical-align:top}
+  th{font-weight:600; font-size:.82rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
 
   /* ---------- steps ---------- */
   ol.steps{list-style:none; padding:0; counter-reset:s; max-width:var(--measure)}
@@ -183,12 +185,12 @@
   ol.steps>li::before{
     content:counter(s); position:absolute; left:0; top:-.05rem; width:1.75rem; height:1.75rem;
     border-radius:50%; background:var(--ink); color:var(--paper); display:grid; place-items:center;
-    font-size:.8rem; font-weight:500;
+    font-size:.88rem; font-weight:500;
   }
   ol.steps>li>b{display:block; margin-bottom:.15rem}
 
   /* ---------- footer ---------- */
-  footer{border-top:1px solid var(--rule); padding:3rem 0 4rem; font-size:.88rem; color:var(--muted)}
+  footer{border-top:1px solid var(--rule); padding:3rem 0 4rem; font-size:.97rem; color:var(--muted)}
   footer p{max-width:var(--measure)}
   .sig{font-family:var(--display); font-style:italic; font-size:1.35rem; color:var(--gold); margin-bottom:.3rem}
 
