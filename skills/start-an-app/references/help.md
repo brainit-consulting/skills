@@ -10,9 +10,9 @@ Last verified: 2026-07-27
 
 | Question 1 answered | Build the guide? |
 | --- | --- |
-| Other people / the public — their customers | **Yes** |
-| Other people — their staff or team | **Yes** — this is where it matters most |
-| Just them, for now | No. They just spent twenty minutes explaining the app to you; they don't need it explained back |
+| Their customers | **Yes** |
+| Their staff | **Yes** — this is where it matters most |
+| Just them | No. They just spent twenty minutes explaining the app to you; they don't need it explained back |
 
 Put it on the build sheet as a line they can decline, not as a question:
 
