@@ -86,6 +86,26 @@ It matters most for small businesses, where the person who commissioned the app 
 
 `references/help.md` pins down where this gets built badly: build on shadcn's `Dialog` so the focus trap, Esc and `aria-modal` come free; 80% of the viewport is the *starting* size, not a fixed one; persist position and size but **clamp on every open**, or a box saved on a 32-inch monitor opens off-screen on a laptop the next morning; full-screen sheet with no dragging below `md`, because touch-drag fights scrolling and scrolling should win; and nothing may require dragging to reach.
 
+### A deploy path that survives leaving the laptop
+
+The offer at hand-off — *"want me to put it online?"* — used to be a one-line `vercel deploy`. It doesn't work, and it fails in the worst available way: the build goes green, the URL loads, and the app breaks on the first click.
+
+The cause is one asymmetry. Everything the app reads from `.env` — the Better Auth secret, the API keys, and often `DATABASE_URL` itself — lives on the user's machine and the deployment cannot see any of it. `references/deploy.md` is a checklist for exactly that: diff `process.env.*` in the source against `vercel env ls production` before deploying, generate a **fresh** production auth secret rather than reusing the local one, and verify by signing up on the live URL rather than on the localhost that already worked.
+
+Three Vercel behaviours in it are the sort that cost an afternoon on first contact:
+
+- **`vercel env pull` writes an empty string for values the CLI added.** They are stored write-only. `NAME=""` means "cannot be shown", not "saved empty" — and re-adding them because the pull looked wrong is a loop that ends where it started.
+- **`<project>.vercel.app` is global.** If the name is taken, the CLI silently assigns `<project>-alpha.vercel.app` and mentions it in one easy-to-miss line.
+- **Only the project's own production domain escapes Deployment Protection.** A domain attached with `vercel alias set` answers `302` to Vercel SSO — so it works for the owner and shows a login screen to everyone they send it to, which is precisely the person who cannot reproduce it.
+
+`references/database.md` was corrected alongside it. Its "going to production: nothing to do" was true of Neon and not of the app: the integration sets `POSTGRES_URL` and `PG*`, while the app reads `DATABASE_URL`, which can end up development-scoped only. Its client snippet now **throws when `DATABASE_URL` is missing**, because `new Pool({ connectionString: undefined })` doesn't fail — `pg` falls back to libpq's `PGHOST`/`PGUSER`/`PGPASSWORD`, all of which the integration sets, so the app connects to the wrong database and reports a missing table instead of a missing variable.
+
+### Demo mode, for showing the app to someone
+
+New optional reference, loaded on request: `references/demo.md`. A `NEXT_PUBLIC_DEMO_MODE` flag gating a badge, a card printing shared credentials, a one-click sign-in, and a re-runnable `pnpm demo:seed` that builds sample data from the day it runs — so a client MVP or a prospect demo can be handed over without handing over anyone's data. Unset the flag and the demo scaffolding is gone; there is nothing to strip out later.
+
+It also fills a real hole: the skill reasoned about seed data (*"seed nothing generic"*) without providing any way to write it. Both scripting traps are documented, because neither error message points at its cause — `tsx` compiles to CommonJS without `"type": "module"`, so top-level `await` fails outright; and `dotenv` must be loaded from a side-effect module imported *first*, since ES imports hoist and the db module builds its pool the moment it is imported.
+
 ### Rules for when the agent may use real tooling
 
 Upstream's scaffold path touched nothing but `npx` and `pnpm`. Putting Neon behind the Vercel CLI crosses that line, so this fork names the rule instead of leaving it implicit. The test is **does the app run without it?**
