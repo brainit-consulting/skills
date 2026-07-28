@@ -101,9 +101,17 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
 
+if (!process.env.POSTGRES_URL) {
+  throw new Error("The database isn't connected yet: POSTGRES_URL is not set.");
+}
+
 const pool = new Pool({ connectionString: process.env.POSTGRES_URL });
 export const db = drizzle(pool, { schema });
 ```
+
+**The guard matters more than it looks.** `new Pool({ connectionString: undefined })` does not fail — `pg` falls back to libpq's `PGHOST`, `PGUSER`, `PGPASSWORD` and `PGDATABASE`, which are set in more places than people expect: any machine with Postgres tooling configured, and several hosting platforms, including anything provisioned by a Postgres integration. So an app with no `POSTGRES_URL` doesn't refuse to start. It quietly connects to *a* database, which is not the one the migrations ran on, and throws `relation "..." does not exist` on the first query instead — sending the user to read their schema for a fault that is one layer away, in a missing environment variable.
+
+The database is not an optional feature and shouldn't degrade like one. Fail immediately, and name the variable.
 
 Start it with `pnpm db:up` (see the scripts below). Docker Desktop must be running — if it isn't, `docker compose` fails with a daemon connection error; tell the user to start Docker Desktop rather than debugging the app.
 
