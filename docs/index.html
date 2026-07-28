@@ -55,7 +55,7 @@
   }
   h1 em{font-style:italic; color:var(--gold)}
   .standfirst{font-size:clamp(1.05rem,2vw,1.28rem); color:var(--ink-soft); max-width:56ch; margin:0 0 2rem; font-weight:300}
-  .facts{display:flex; flex-wrap:wrap; gap:0 2rem; list-style:none; padding:0; margin:0; font-size:.93rem; color:var(--muted)}
+  .facts{display:flex; flex-wrap:wrap; gap:0 1.75rem; list-style:none; padding:0; margin:0; font-size:.88rem; color:var(--muted)}
   /* nowrap per item: the row may wrap between facts on a narrow screen,
      but never mid-phrase */
   .facts li{padding:.35rem 0; white-space:nowrap}
@@ -174,8 +174,10 @@
 
   .dash{stroke-dasharray:5 5; animation:march 22s linear infinite}
   @keyframes march{to{stroke-dashoffset:-200}}
-  .pulse{animation:pulse 3.4s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:.75}}
+  /* the land tile is 156 wide and drawn twice, so translating by exactly
+     one tile width loops without a seam */
+  .spin{animation:spin 34s linear infinite}
+  @keyframes spin{to{transform:translateX(-156px)}}
 
   /* ---------- table ---------- */
   table{border-collapse:collapse; width:100%; max-width:var(--measure); font-size:.99rem; margin:0 0 1.2rem}
@@ -234,9 +236,9 @@
   <h1 class="rise">From an idea to a <em>working app</em></h1>
   <p class="standfirst rise">You don't need to know how to code. You need to know how to describe your own business — which you already do. This guide takes you from an empty computer to an app you can actually use.</p>
   <ul class="facts rise">
-    <li><b>About 90 minutes</b> start to finish</li>
-    <li><b>£0 / $0</b> — everything here has a free tier</li>
-    <li><b>No experience</b> assumed</li>
+    <li><b>90 minutes</b> start to finish</li>
+    <li><b>Free</b> — every tool here</li>
+    <li><b>No experience</b> needed</li>
   </ul>
 </header>
 
@@ -283,19 +285,52 @@
         <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
           <path d="M0,0 L9,4.5 L0,9 z" fill="#b8721f"/>
         </marker>
-        <radialGradient id="forge" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="#e09036" stop-opacity=".30"/>
-          <stop offset="45%" stop-color="#e09036" stop-opacity=".14"/>
-          <stop offset="80%" stop-color="#c47a2c" stop-opacity=".05"/>
-          <stop offset="100%" stop-color="#e09036" stop-opacity="0"/>
+        <clipPath id="globeClip"><circle cx="320" cy="150" r="78"/></clipPath>
+        <!-- light from the upper left, so the sphere reads as lit rather than flat -->
+        <radialGradient id="ocean" cx="34%" cy="28%" r="78%">
+          <stop offset="0%" stop-color="#7cc9ef"/>
+          <stop offset="48%" stop-color="#2f86c2"/>
+          <stop offset="100%" stop-color="#14507c"/>
         </radialGradient>
+        <radialGradient id="terminator" cx="34%" cy="28%" r="80%">
+          <stop offset="55%" stop-color="#062338" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#062338" stop-opacity=".62"/>
+        </radialGradient>
+        <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+          <stop offset="72%" stop-color="#7cc9ef" stop-opacity="0"/>
+          <stop offset="90%" stop-color="#7cc9ef" stop-opacity=".28"/>
+          <stop offset="100%" stop-color="#7cc9ef" stop-opacity="0"/>
+        </radialGradient>
+        <!-- one tile of land, 156 wide; drawn twice so the spin loops seamlessly -->
+        <g id="lands" fill="#57a25c">
+          <path d="M250 96 q22 -14 44 -6 t30 14 q6 14 -12 20 t-40 6 q-24 -4 -28 -16 t6 -18 z"/>
+          <path d="M262 148 q16 -6 26 4 t8 26 q-2 20 -14 30 t-22 2 q-8 -14 -6 -32 t8 -30 z"/>
+          <path d="M330 116 q30 -12 52 -2 t14 22 q-6 12 -30 14 t-38 -8 q-8 -14 2 -26 z"/>
+          <path d="M344 176 q22 -8 34 4 t2 22 q-14 8 -30 2 t-6 -28 z"/>
+          <ellipse cx="308" cy="212" rx="14" ry="7"/>
+          <ellipse cx="386" cy="150" rx="9" ry="5"/>
+        </g>
       </defs>
-      <!-- forge glow: painted first so the orbit line reads on top of it -->
-      <g class="pulse">
-        <circle cx="320" cy="150" r="150" fill="url(#forge)"/>
-        <circle cx="320" cy="150" r="118" fill="none" stroke="#e09036" stroke-width=".9" opacity=".30"/>
-        <circle cx="320" cy="150" r="84" fill="none" stroke="#e09036" stroke-width=".9" opacity=".20"/>
-        <circle cx="320" cy="150" r="50" fill="none" stroke="#e09036" stroke-width=".9" opacity=".12"/>
+      <!-- the world the agent works on: painted first, so the orbit and the
+           four nodes sit in front of it -->
+      <g>
+        <circle cx="320" cy="150" r="94" fill="url(#halo)"/>
+        <circle cx="320" cy="150" r="78" fill="url(#ocean)"/>
+        <g clip-path="url(#globeClip)">
+          <g class="spin">
+            <use href="#lands" opacity=".85"/>
+            <use href="#lands" x="156" opacity=".85"/>
+          </g>
+          <!-- graticule: equator and two parallels, drawn as ellipses so they
+               read as curvature rather than flat lines -->
+          <g fill="none" stroke="#eaf6ff" stroke-width=".7" opacity=".22">
+            <ellipse cx="320" cy="150" rx="78" ry="26"/>
+            <ellipse cx="320" cy="150" rx="78" ry="56"/>
+            <line x1="242" y1="150" x2="398" y2="150"/>
+          </g>
+        </g>
+        <circle cx="320" cy="150" r="78" fill="url(#terminator)"/>
+        <circle cx="320" cy="150" r="78" fill="none" stroke="#14507c" stroke-width=".9" opacity=".45"/>
       </g>
       <ellipse cx="320" cy="150" rx="230" ry="104" fill="none" stroke="#e09036" stroke-width="1.4" class="dash" opacity=".85" marker-end="url(#ar)"/>
 
