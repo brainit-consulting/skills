@@ -99,15 +99,74 @@ Upstream's scaffold path touched nothing but `npx` and `pnpm`. Putting Neon behi
 
 Two concrete consequences: `references/database.md` runs `vercel whoami` **before** promising a free hosted database, so the fallback to Docker/local happens before expectations are set rather than after a failed command; and the GitHub offer at hand-off is **private by default with the visibility said out loud**, because a business owner accidentally publishing their source is a real harm rather than an untidiness.
 
-## Using a skill locally
+## Install
 
-Symlink it into the Claude Code skills directory (PowerShell, needs Developer Mode or an elevated shell):
+**Normal use** — from the published copy, which works in Claude Code, Codex, Cursor, Gemini CLI, Copilot and others:
+
+```bash
+npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill start-an-app
+```
+
+```bash
+npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill security-scanner
+```
+
+**Working on the skill itself** — symlink this repo so edits take effect immediately (PowerShell, needs Developer Mode or an elevated shell):
 
 ```powershell
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\start-an-app" -Target "H:\skills\start-an-app"
 ```
 
 A plain copy works too, but then edits here don't reach the installed copy.
+
+## Using `start-an-app`
+
+**Open the folder you want the app to live in, and make sure it's empty.** The app is created in the current working directory — the folder you open is the folder it lands in. There's no "where should this go?" question, because an agent can't reliably write outside where it started. If the folder already holds a project, the skill stops rather than scaffolding over it.
+
+Then just say what you want:
+
+```
+/start-an-app
+```
+
+or simply *"I want to build a booking system for my salon"* — the skill triggers on the intent.
+
+### What it asks
+
+An open conversation about the idea first — including *"what are you doing about this today, a spreadsheet, a notebook, WhatsApp?"*, which usually hands over the data model. Then at most three gap-checks, then seven technical questions, each with a recommended default so **"whatever you recommend" is a complete answer**:
+
+1. Who's it for — customers, staff, or just you?
+2. Do people need their own login?
+3. Will people upload anything?
+4. Will customers pay you through this?
+5. Should it do anything with AI?
+6. What should a first-time visitor see?
+7. Do you already have a website to match the look of?
+
+It then reads the whole plan back — data model, what you can do, where the folder is, and an explicit *not in version one* list — and waits for a yes before running a single command.
+
+### What you need first
+
+**Nothing, to start.** Two things unlock more if you have them:
+
+- **A Vercel account** (free) — gets you hosted Postgres with your own copy-on-write branch for local work. Without one it falls back to Docker, a local Postgres server, or offline PGlite; you're never blocked.
+- **An existing website** — paste the address and it matches your colours, typefaces and shape.
+
+Anything needing a signup (Polar or Stripe for payments, Google sign-in, OpenRouter for AI) is only touched if you ask for that feature, and the skill walks you through it rather than doing it for you.
+
+### What you get
+
+A running app on your machine, its schema in real migrations, a `DESIGN.md` it actually obeys, and — for apps used by customers or staff — a `?` in the corner opening a guide written from your own answers. Putting it on GitHub and deploying are **offered at the end, never done for you**.
+
+## Using `security-scanner`
+
+Run it in the repo you want audited, once the app is real:
+
+```
+/security-scanner
+```
+
+It sweeps all ten OWASP 2025 categories and writes a dated report to `audit/` with file, line, evidence and a fix for every finding. Worth knowing before you read it: **a finding is not a breach.** A fresh scaffold produces mostly Low and Info — missing headers, console-only logging. Look at the Critical and High counts first.
 
 ## Credits
 
