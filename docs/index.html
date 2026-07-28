@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>From idea to working app — a beginner's field manual</title>
+<meta name="description" content="A plain-language guide to building your first real app with an AI coding agent. No experience needed." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#faf6f0;
+    --paper-2:#fffdfa;
+    --ink:#231f1a;
+    --ink-soft:#4a423a;
+    --muted:#867c72;
+    --gold:#b8721f;
+    --gold-bright:#e09036;
+    --gold-wash:rgba(224,144,54,.10);
+    --rule:#e6ddd1;
+    --rule-strong:#d4c8b8;
+    --cyan:#0e7490;
+    --shadow:0 1px 2px rgba(35,31,26,.04), 0 8px 24px -12px rgba(35,31,26,.14);
+    --display:"Cormorant Garamond", Georgia, serif;
+    --body:"Outfit", ui-sans-serif, system-ui, sans-serif;
+    --measure:68ch;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:2rem}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--body); font-weight:400; font-size:17px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* paper grain */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.30;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+    mix-blend-mode:multiply;
+  }
+  .wrap{position:relative; z-index:2; max-width:1220px; margin:0 auto; padding:0 clamp(1rem,4vw,3rem)}
+
+  /* ---------- masthead ---------- */
+  header.masthead{padding:clamp(3rem,9vh,7rem) 0 clamp(2rem,5vh,4rem); border-bottom:1px solid var(--rule)}
+  .eyebrow{
+    font-size:.75rem; letter-spacing:.22em; text-transform:uppercase; color:var(--gold);
+    font-weight:500; margin:0 0 1.5rem;
+  }
+  h1{
+    font-family:var(--display); font-weight:600; font-size:clamp(2.8rem,7.5vw,5.2rem);
+    line-height:1.02; letter-spacing:-.02em; margin:0 0 1.25rem; max-width:16ch;
+  }
+  h1 em{font-style:italic; color:var(--gold)}
+  .standfirst{font-size:clamp(1.05rem,2vw,1.28rem); color:var(--ink-soft); max-width:56ch; margin:0 0 2rem; font-weight:300}
+  .facts{display:flex; flex-wrap:wrap; gap:0 2.5rem; list-style:none; padding:0; margin:0; font-size:.9rem; color:var(--muted)}
+  .facts li{padding:.35rem 0}
+  .facts b{color:var(--ink); font-weight:500}
+
+  /* ---------- layout ---------- */
+  .cols{display:grid; grid-template-columns:1fr; gap:3rem; padding:3rem 0 6rem}
+  @media(min-width:1000px){ .cols{grid-template-columns:250px minmax(0,1fr); gap:4rem} }
+
+  nav.toc{position:sticky; top:2rem; align-self:start; font-size:1rem; display:none}
+  @media(min-width:1000px){ nav.toc{display:block} }
+  nav.toc p{font-size:.78rem; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin:0 0 1rem}
+  nav.toc ol{list-style:none; margin:0; padding:0; counter-reset:t}
+  nav.toc li{counter-increment:t; margin:0 0 .1rem}
+  nav.toc a{
+    display:block; padding:.5rem .6rem .5rem 2.4rem; color:var(--muted); text-decoration:none;
+    border-left:2px solid transparent; position:relative; transition:color .18s, border-color .18s, background .18s;
+    border-radius:0 4px 4px 0;
+  }
+  nav.toc a::before{
+    content:counter(t,decimal-leading-zero); position:absolute; left:.6rem; font-size:.82rem;
+    color:var(--rule-strong); font-variant-numeric:tabular-nums; top:.66rem;
+  }
+  nav.toc a:hover{color:var(--ink); background:var(--gold-wash)}
+  nav.toc a.on{color:var(--gold); border-left-color:var(--gold-bright); font-weight:500}
+  nav.toc a.on::before{color:var(--gold)}
+
+  main{min-width:0}
+  section{margin:0 0 clamp(4rem,9vh,7rem); scroll-margin-top:2rem}
+  .stage{display:flex; align-items:baseline; gap:1rem; margin:0 0 1.5rem}
+  .stage .num{
+    font-family:var(--display); font-size:1rem; font-weight:600; color:var(--gold);
+    width:2.1rem; height:2.1rem; flex:0 0 auto; border:1px solid var(--gold-bright); border-radius:50%;
+    display:grid; place-items:center; background:var(--gold-wash);
+  }
+  h2{font-family:var(--display); font-weight:600; font-size:clamp(1.9rem,4vw,2.7rem); line-height:1.1; letter-spacing:-.015em; margin:0}
+  h3{font-family:var(--body); font-weight:600; font-size:1.06rem; letter-spacing:-.005em; margin:2.4rem 0 .6rem}
+  h4{font-family:var(--body); font-weight:600; font-size:.95rem; margin:1.6rem 0 .4rem}
+  p{max-width:var(--measure); margin:0 0 1.1rem}
+  .lede{font-size:1.12rem; color:var(--ink-soft); font-weight:300; max-width:60ch}
+  a{color:var(--gold); text-underline-offset:3px; text-decoration-thickness:1px}
+  a:hover{color:var(--ink)}
+  strong{font-weight:600}
+  ul,ol{max-width:var(--measure); padding-left:1.2rem; margin:0 0 1.1rem}
+  li{margin:0 0 .5rem}
+  hr{border:0; border-top:1px solid var(--rule); margin:3rem 0}
+
+  /* ---------- code ---------- */
+  .code{
+    position:relative; background:#2c261f; color:#f2eee9; border-radius:8px;
+    padding:1rem 3.2rem 1rem 1.1rem; margin:0 0 1.1rem; max-width:var(--measure);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:.855rem; line-height:1.6;
+    overflow-x:auto; box-shadow:var(--shadow);
+  }
+  .code .c{color:#a89f94}
+  .code b{color:var(--gold-bright); font-weight:500}
+  .copy{
+    position:absolute; top:.55rem; right:.55rem; background:rgba(255,255,255,.07); color:#cfc7bd;
+    border:1px solid rgba(255,255,255,.12); border-radius:5px; font:inherit; font-size:.7rem;
+    padding:.25rem .5rem; cursor:pointer; transition:background .15s,color .15s;
+  }
+  .copy:hover{background:rgba(224,144,54,.22); color:#fff}
+  .copy.done{color:#9ae6b4}
+  code:not(.code code){
+    background:rgba(184,114,31,.10); padding:.1em .35em; border-radius:3px;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:.87em;
+  }
+
+  /* ---------- callouts ---------- */
+  .note{
+    border-left:2px solid var(--gold-bright); background:var(--gold-wash);
+    padding:1rem 1.2rem; margin:0 0 1.2rem; max-width:var(--measure); border-radius:0 6px 6px 0;
+  }
+  .note p:last-child{margin-bottom:0}
+  .note .tag{
+    display:block; font-size:.68rem; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--gold); font-weight:600; margin-bottom:.4rem;
+  }
+  .note.plain{border-left-color:var(--rule-strong); background:transparent; border-left-style:dashed}
+  .note.plain .tag{color:var(--muted)}
+
+  /* ---------- cards ---------- */
+  .grid{display:grid; gap:1rem; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); margin:0 0 1.2rem}
+  .card{
+    background:var(--paper-2); border:1px solid var(--rule); border-radius:10px; padding:1.3rem;
+    box-shadow:var(--shadow); transition:transform .2s ease, box-shadow .2s ease, border-color .2s;
+  }
+  .card:hover{transform:translateY(-2px); border-color:var(--gold-bright); box-shadow:0 12px 30px -14px rgba(184,114,31,.4)}
+  .card h4{margin:0 0 .35rem; font-size:1rem}
+  .card p{font-size:.92rem; color:var(--ink-soft); margin:0}
+  .card .say{
+    display:block; margin-top:.7rem; padding-top:.7rem; border-top:1px dashed var(--rule-strong);
+    font-family:var(--display); font-style:italic; font-size:1.02rem; color:var(--gold); line-height:1.4;
+  }
+
+  /* ---------- answers ---------- */
+  .qa{border-top:1px solid var(--rule); padding:1.5rem 0 .4rem; max-width:var(--measure)}
+  .qa .q{font-family:var(--display); font-size:1.35rem; font-weight:600; margin:0 0 1rem; line-height:1.25}
+  .qa .q span{color:var(--gold); font-size:.8rem; font-family:var(--body); font-weight:600; letter-spacing:.1em; display:block; margin-bottom:.3rem}
+  .ans{display:grid; gap:.7rem; margin-bottom:.9rem}
+  @media(min-width:640px){ .ans{grid-template-columns:1fr 1fr} }
+  .ans div{padding:.8rem .95rem; border-radius:7px; font-size:.92rem; line-height:1.55}
+  .ans .weak{background:rgba(35,31,26,.04); color:var(--muted)}
+  .ans .good{background:var(--paper-2); border:1px solid var(--gold-bright); color:var(--ink)}
+  .ans .lbl{display:block; font-size:.65rem; letter-spacing:.15em; text-transform:uppercase; font-weight:600; margin-bottom:.35rem}
+  .ans .weak .lbl{color:var(--muted)}
+  .ans .good .lbl{color:var(--gold)}
+  .why{font-size:.9rem; color:var(--ink-soft)}
+  .why b{color:var(--ink)}
+
+  /* ---------- figures ---------- */
+  figure{margin:2rem 0; max-width:var(--measure)}
+  figure svg{width:100%; height:auto; display:block}
+  figcaption{font-size:.83rem; color:var(--muted); margin-top:.7rem; font-style:italic; font-family:var(--display); font-size:1rem}
+
+  .dash{stroke-dasharray:5 5; animation:march 22s linear infinite}
+  @keyframes march{to{stroke-dashoffset:-200}}
+  .pulse{animation:pulse 3.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:.75}}
+
+  /* ---------- table ---------- */
+  table{border-collapse:collapse; width:100%; max-width:var(--measure); font-size:.92rem; margin:0 0 1.2rem}
+  th,td{text-align:left; padding:.6rem .7rem; border-bottom:1px solid var(--rule); vertical-align:top}
+  th{font-weight:600; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+
+  /* ---------- steps ---------- */
+  ol.steps{list-style:none; padding:0; counter-reset:s; max-width:var(--measure)}
+  ol.steps>li{counter-increment:s; position:relative; padding-left:2.6rem; margin-bottom:1.4rem}
+  ol.steps>li::before{
+    content:counter(s); position:absolute; left:0; top:-.05rem; width:1.75rem; height:1.75rem;
+    border-radius:50%; background:var(--ink); color:var(--paper); display:grid; place-items:center;
+    font-size:.8rem; font-weight:500;
+  }
+  ol.steps>li>b{display:block; margin-bottom:.15rem}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--rule); padding:3rem 0 4rem; font-size:.88rem; color:var(--muted)}
+  footer p{max-width:var(--measure)}
+  .sig{font-family:var(--display); font-style:italic; font-size:1.35rem; color:var(--gold); margin-bottom:.3rem}
+
+  /* ---------- motion ---------- */
+  .rise{opacity:0; transform:translateY(14px)}
+  .rise.in{opacity:1; transform:none; transition:opacity .6s cubic-bezier(.2,.7,.3,1), transform .6s cubic-bezier(.2,.7,.3,1)}
+  header.masthead .rise{animation:up .8s cubic-bezier(.2,.7,.3,1) forwards; opacity:0}
+  header.masthead .rise:nth-child(1){animation-delay:.05s}
+  header.masthead .rise:nth-child(2){animation-delay:.15s}
+  header.masthead .rise:nth-child(3){animation-delay:.25s}
+  header.masthead .rise:nth-child(4){animation-delay:.35s}
+  @keyframes up{to{opacity:1; transform:none}}
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none !important; transition:none !important}
+    .rise{opacity:1 !important; transform:none !important}
+    html{scroll-behavior:auto}
+  }
+  @media print{
+    body::before{display:none} nav.toc{display:none} .copy{display:none}
+    .code{background:#f2eee9; color:#231f1a; box-shadow:none; border:1px solid #ccc}
+    .card:hover{transform:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow rise">DreamForge Software · Field Manual No. 1</p>
+  <h1 class="rise">From an idea to a <em>working app</em></h1>
+  <p class="standfirst rise">You don't need to know how to code. You need to know how to describe your own business — which you already do. This guide takes you from an empty computer to an app you can actually use.</p>
+  <ul class="facts rise">
+    <li><b>About 90 minutes</b> start to finish</li>
+    <li><b>£0 / $0</b> — everything here has a free tier</li>
+    <li><b>No experience</b> assumed</li>
+  </ul>
+</header>
+
+<div class="cols">
+
+<nav class="toc" aria-label="Contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#what">What an agent is</a></li>
+    <li><a href="#loop">The agentic loop</a></li>
+    <li><a href="#install">Install your agent</a></li>
+    <li><a href="#accounts">Two free accounts</a></li>
+    <li><a href="#skill">Install the skill</a></li>
+    <li><a href="#first">Your first app</a></li>
+    <li><a href="#answers">Answering well</a></li>
+    <li><a href="#ideas">Things to build</a></li>
+    <li><a href="#after">What happens after</a></li>
+    <li><a href="#wrong">When it goes wrong</a></li>
+    <li><a href="#help">Getting help</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- 1 -->
+<section id="what" class="rise">
+  <div class="stage"><span class="num">1</span><h2>What an AI coding agent actually is</h2></div>
+  <p class="lede">It is not a chatbot that writes code for you to paste somewhere. It is a program that sits on your computer, with permission to open your files, change them, and run things — while you watch.</p>
+  <p>The difference matters. A chatbot gives you a wall of code and leaves you to work out where it goes. An agent opens the folder, creates the files, installs what's needed, starts the app, looks at the result in a browser, notices the button is broken, and fixes it. You supervise; it does the typing.</p>
+  <p>That's why you don't need to code. You need to be able to say what's wrong — <em>"the times are showing four hours early"</em> — which is a thing any owner can see.</p>
+  <div class="note plain">
+    <span class="tag">In plain words</span>
+    <p>Think of it as a very fast junior who has read every manual, never gets bored, and will happily redo something eleven times — but who has never met your customers and needs you to explain the business.</p>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="loop" class="rise">
+  <div class="stage"><span class="num">2</span><h2>The agentic loop</h2></div>
+  <p class="lede">Everything that follows makes more sense once you've seen the loop the agent runs in.</p>
+  <figure>
+    <svg viewBox="0 0 640 300" role="img" aria-label="A circular loop: you describe, the agent plans, acts, then checks its own work, then returns to you.">
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#b8721f"/>
+        </marker>
+      </defs>
+      <ellipse cx="320" cy="150" rx="230" ry="104" fill="none" stroke="#e09036" stroke-width="1.4" class="dash" opacity=".85" marker-end="url(#ar)"/>
+      <circle cx="320" cy="150" r="150" fill="#e09036" opacity=".05" class="pulse"/>
+
+      <g font-family="Outfit,sans-serif">
+        <g>
+          <circle cx="90" cy="150" r="42" fill="#fffdfa" stroke="#b8721f" stroke-width="1.5"/>
+          <text x="90" y="146" text-anchor="middle" font-size="14" font-weight="600" fill="#231f1a">You</text>
+          <text x="90" y="163" text-anchor="middle" font-size="10.5" fill="#867c72">describe it</text>
+        </g>
+        <g>
+          <circle cx="320" cy="46" r="42" fill="#fffdfa" stroke="#d4c8b8" stroke-width="1.2"/>
+          <text x="320" y="42" text-anchor="middle" font-size="13" font-weight="600" fill="#231f1a">Plans</text>
+          <text x="320" y="59" text-anchor="middle" font-size="10.5" fill="#867c72">reads, decides</text>
+        </g>
+        <g>
+          <circle cx="550" cy="150" r="42" fill="#fffdfa" stroke="#d4c8b8" stroke-width="1.2"/>
+          <text x="550" y="146" text-anchor="middle" font-size="13" font-weight="600" fill="#231f1a">Acts</text>
+          <text x="550" y="163" text-anchor="middle" font-size="10.5" fill="#867c72">writes, runs</text>
+        </g>
+        <g>
+          <circle cx="320" cy="254" r="42" fill="#fffdfa" stroke="#d4c8b8" stroke-width="1.2"/>
+          <text x="320" y="250" text-anchor="middle" font-size="13" font-weight="600" fill="#231f1a">Checks</text>
+          <text x="320" y="267" text-anchor="middle" font-size="10.5" fill="#867c72">did it work?</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption>Round and round until the job is done — or until it needs an answer only you have.</figcaption>
+  </figure>
+  <p>Two things follow from this, and they're the whole skill of working with an agent:</p>
+  <ul>
+    <li><strong>Say what's wrong, not how to fix it.</strong> "The owner's phone number should be on the card" beats trying to describe code you can't see.</li>
+    <li><strong>Let it finish the loop.</strong> It will often write something, run it, find its own mistake and correct it. Interrupting at the first sign of activity is like grabbing the wheel.</li>
+  </ul>
+  <div class="note">
+    <span class="tag">Watch out</span>
+    <p>The agent asks before anything that costs money, publishes something, or creates an account. If you ever see it about to do one of those unasked, stop it — that's not how this skill is meant to behave.</p>
+  </div>
+</section>
+
+<!-- 3 -->
+<section id="install" class="rise">
+  <div class="stage"><span class="num">3</span><h2>Install your agent</h2></div>
+  <p class="lede">Two good options. Either works with this skill. If you've no strong feeling, take Claude Code.</p>
+
+  <h3>First: Node.js (both need it)</h3>
+  <p>Node.js is the engine these tools run on. Go to <a href="https://nodejs.org">nodejs.org</a>, download the version marked <strong>LTS</strong>, and click through the installer. Nothing to configure.</p>
+  <p>To check it worked, open a terminal — <em>Terminal</em> on a Mac, <em>PowerShell</em> on Windows — and type:</p>
+  <div class="code"><button class="copy">copy</button>node --version</div>
+  <p>A number like <code>v22.11.0</code> means you're set. An error means the install didn't take; run it again.</p>
+
+  <h3>Claude Code</h3>
+  <p>There's a desktop app for Mac and Windows at <a href="https://claude.com/claude-code">claude.com/claude-code</a> — download, sign in, done. If you'd rather work in a terminal:</p>
+  <div class="code"><button class="copy">copy</button>npm install -g @anthropic-ai/claude-code</div>
+  <p>Then start it inside whatever folder you want to work in:</p>
+  <div class="code"><button class="copy">copy</button>claude</div>
+
+  <h3>Codex</h3>
+  <p>OpenAI's equivalent. Same idea, same skill works:</p>
+  <div class="code"><button class="copy">copy</button>npm install -g @openai/codex</div>
+  <div class="code"><button class="copy">copy</button>codex</div>
+
+  <div class="note plain">
+    <span class="tag">If a command has changed</span>
+    <p>These tools move quickly and install commands do occasionally change. The official pages are always right; this page might be a month behind. If a command errors, check the vendor's install page before assuming you've done something wrong.</p>
+  </div>
+</section>
+
+<!-- 4 -->
+<section id="accounts" class="rise">
+  <div class="stage"><span class="num">4</span><h2>Two free accounts worth having</h2></div>
+  <p class="lede">Neither is required to start. Both make what you build considerably more useful, and both are free for what you'll be doing.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h4>GitHub</h4>
+      <p>A safe copy of your work, with a full history of every change. Like version history in Google Docs, but for your whole project — including the ability to go back to how it was on Tuesday.</p>
+      <span class="say">"Put this on GitHub for me — private."</span>
+    </div>
+    <div class="card">
+      <h4>Vercel</h4>
+      <p>Where your app lives when you want it online, and where its database comes from. The free "Hobby" plan covers a small business app comfortably.</p>
+      <span class="say">"Put it online so I can see it on my phone."</span>
+    </div>
+  </div>
+
+  <p>Sign up at <a href="https://github.com">github.com</a> and <a href="https://vercel.com">vercel.com</a>. You do this part yourself — an agent should never create an account or enter a password on your behalf, and this one won't.</p>
+
+  <h3>Why the database matters more than it sounds</h3>
+  <p>Your app needs somewhere to keep its information — the bookings, the customers, the notes. With a Vercel account, the skill sets up a free one and does something worth understanding:</p>
+  <figure>
+    <svg viewBox="0 0 640 220" role="img" aria-label="A trunk labelled the real database splits into a branch labelled your copy for building.">
+      <g font-family="Outfit,sans-serif">
+        <rect x="40" y="40" width="230" height="62" rx="9" fill="#fffdfa" stroke="#b8721f" stroke-width="1.5"/>
+        <text x="155" y="66" text-anchor="middle" font-size="14" font-weight="600" fill="#231f1a">The real database</text>
+        <text x="155" y="86" text-anchor="middle" font-size="11" fill="#867c72">what your customers touch</text>
+
+        <path d="M270 71 C 340 71, 340 160, 400 160" fill="none" stroke="#e09036" stroke-width="1.6" class="dash"/>
+
+        <rect x="400" y="128" width="205" height="62" rx="9" fill="#fffdfa" stroke="#d4c8b8" stroke-width="1.2"/>
+        <text x="502" y="154" text-anchor="middle" font-size="14" font-weight="600" fill="#231f1a">Your copy</text>
+        <text x="502" y="174" text-anchor="middle" font-size="11" fill="#867c72">for building and breaking</text>
+
+        <text x="335" y="112" text-anchor="middle" font-size="11" fill="#b8721f" font-style="italic">copied in a second</text>
+      </g>
+    </svg>
+    <figcaption>You get your own copy to build against. Nothing you do while learning can damage the real thing.</figcaption>
+  </figure>
+  <p>Without a Vercel account it still works — the database just runs on your own machine instead. You're never blocked, you simply get less.</p>
+</section>
+
+<!-- 5 -->
+<section id="skill" class="rise">
+  <div class="stage"><span class="num">5</span><h2>Install the skill</h2></div>
+  <p class="lede">A "skill" is a set of instructions your agent reads before it starts, so it knows how to do a particular job properly. This one knows how to build an app.</p>
+  <div class="code"><button class="copy">copy</button>npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill start-an-app</div>
+  <p>And the one that checks your app for security problems once it's real:</p>
+  <div class="code"><button class="copy">copy</button>npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill security-scanner</div>
+  <p>Both work in Claude Code, Codex, Cursor, Gemini CLI, Copilot and a dozen others.</p>
+</section>
+
+<!-- 6 -->
+<section id="first" class="rise">
+  <div class="stage"><span class="num">6</span><h2>Building your first app</h2></div>
+
+  <h3>The one rule that matters</h3>
+  <p><strong>Open an empty folder.</strong> The app is created wherever you start the agent — the folder you open is the folder it lands in. There's no "where shall I put this?" question, because an agent can't reliably write outside where it started.</p>
+  <figure>
+    <svg viewBox="0 0 640 150" role="img" aria-label="An empty folder is fine; a folder that already contains a project is not.">
+      <g font-family="Outfit,sans-serif">
+        <rect x="30" y="30" width="270" height="90" rx="9" fill="#fffdfa" stroke="#b8721f" stroke-width="1.5"/>
+        <text x="55" y="62" font-size="22">📁</text>
+        <text x="92" y="62" font-size="14" font-weight="600" fill="#231f1a">H:\salonbook</text>
+        <text x="92" y="83" font-size="11.5" fill="#867c72">empty — perfect</text>
+        <text x="92" y="102" font-size="11.5" fill="#b8721f">the app is built here</text>
+
+        <rect x="345" y="30" width="270" height="90" rx="9" fill="#fffdfa" stroke="#d4c8b8" stroke-width="1.2" stroke-dasharray="4 4"/>
+        <text x="370" y="62" font-size="22">📁</text>
+        <text x="407" y="62" font-size="14" font-weight="600" fill="#231f1a">H:\my-other-work</text>
+        <text x="407" y="83" font-size="11.5" fill="#867c72">already has a project in it</text>
+        <text x="407" y="102" font-size="11.5" fill="#867c72">the skill will stop and say so</text>
+      </g>
+    </svg>
+    <figcaption>Make a new folder, open the agent in it, and you can't go wrong.</figcaption>
+  </figure>
+
+  <h3>Then just talk</h3>
+  <ol class="steps">
+    <li><b>Start the skill</b> Type <code>/start-an-app</code>, or simply say what you want — <em>"I want a booking system for my salon"</em> works just as well.</li>
+    <li><b>Describe the business</b> Not the software. What happens in your day, who rings you, what you write down.</li>
+    <li><b>Answer the questions</b> Seven of them, each with a recommendation. <strong>"Whatever you recommend" is a complete answer</strong> to any of them.</li>
+    <li><b>Check the plan</b> It reads the whole thing back — what it will remember, what you'll be able to do, and what's deliberately <em>not</em> in version one. Correct anything that's wrong. This is the cheapest moment to change your mind.</li>
+    <li><b>Let it build</b> Ten to twenty minutes. It'll narrate as it goes.</li>
+    <li><b>Use it</b> Then say what's wrong in your own words, and it fixes it.</li>
+  </ol>
+
+  <div class="note">
+    <span class="tag">The most useful thing you can say</span>
+    <p>When it asks what you do <em>today</em> — a spreadsheet, a paper diary, a WhatsApp group — answer properly, and offer to show it. The columns in your spreadsheet are, almost exactly, what the app needs to remember. That one answer saves more back-and-forth than anything else in the conversation.</p>
+  </div>
+</section>
+
+<!-- 7 -->
+<section id="answers" class="rise">
+  <div class="stage"><span class="num">7</span><h2>How to answer well</h2></div>
+  <p class="lede">The questions are simple, but vague answers produce a vague app. Here's the difference, using a dog-grooming salon as the example.</p>
+
+  <div class="qa">
+    <p class="q"><span>Opening question</span>What are you building?</p>
+    <div class="ans">
+      <div class="weak"><span class="lbl">Vague</span>"A booking system."</div>
+      <div class="good"><span class="lbl">Useful</span>"A diary for the salon. People ring up to book their dog in for a groom. I need to know whose dog, which dog, what they're having done, when, and anything I should remember about that dog."</div>
+    </div>
+    <p class="why"><b>Why:</b> the second one contains the entire data model. Every noun you say — owner, dog, groom, time — becomes something the app remembers.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span>Question 1</span>Who's it for — your customers, your staff, or just you?</p>
+    <div class="ans">
+      <div class="weak"><span class="lbl">Vague</span>"Everyone, really."</div>
+      <div class="good"><span class="lbl">Useful</span>"Me and my two groomers. Customers don't log in — we book them in over the phone."</div>
+    </div>
+    <p class="why"><b>Why:</b> this single answer decides the kind of database, whether there are logins, and who can see what. "Everyone" leaves all three unanswered.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span>Question 2</span>Do people need their own login?</p>
+    <div class="ans">
+      <div class="weak"><span class="lbl">Vague</span>"Yes I suppose so."</div>
+      <div class="good"><span class="lbl">Useful</span>"Yes — one each for me and the two girls. If someone leaves I want to remove just theirs."</div>
+    </div>
+    <p class="why"><b>Why:</b> the reason shapes the result. Individual logins mean you can remove one person without changing everybody's password — worth saying out loud.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span>Question 3</span>Will people upload anything?</p>
+    <div class="ans">
+      <div class="weak"><span class="lbl">Vague</span>"Maybe photos at some point."</div>
+      <div class="good"><span class="lbl">Useful</span>"Before and after photos on each groom. Nothing else."</div>
+    </div>
+    <p class="why"><b>Why:</b> "maybe later" builds nothing and clutters the conversation. <b>Saying no is a good answer</b> — anything can be added later, and a smaller first version is a better first version.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span>Question 4</span>Will customers pay you through this?</p>
+    <div class="ans">
+      <div class="weak"><span class="lbl">Vague</span>"Eventually, probably."</div>
+      <div class="good"><span class="lbl">Useful</span>"Not in version one — they pay in the salon. I'd like deposits for the big dogs later on."</div>
+    </div>
+    <p class="why"><b>Why:</b> payments drag in accounts, tax handling and a provider signup. Naming it as a <em>later</em> thing keeps your first version small enough to actually finish.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span>Question 5</span>Should it do anything with AI?</p>
+    <div class="ans">
+      <div class="weak"><span class="lbl">Vague</span>"Yes, put AI in it."</div>
+      <div class="good"><span class="lbl">Useful</span>"No — actually, could it write the reminder text I send the night before? I write the same one forty times a week."</div>
+    </div>
+    <p class="why"><b>Why:</b> AI added for its own sake is a gimmick you'll switch off. AI pointed at a job you actually repeat is the one you'll keep.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span>Question 6</span>What should a first-time visitor see?</p>
+    <div class="ans">
+      <div class="weak"><span class="lbl">Vague</span>"The app, I suppose."</div>
+      <div class="good"><span class="lbl">Useful</span>"Just a sign-in box. Nobody outside the salon should see anything at all."</div>
+    </div>
+    <p class="why"><b>Why:</b> this decides whether you get a public page describing your business, or a locked door. A staff tool with a marketing homepage is a very common way to make something feel fake.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span>Question 7</span>Do you already have a website?</p>
+    <div class="ans">
+      <div class="weak"><span class="lbl">Vague</span>"No."</div>
+      <div class="good"><span class="lbl">Useful</span>"Yes — groomroom.example. Match those colours." <em>or</em> "No, but I like how Notion looks. Calm and plain."</div>
+    </div>
+    <p class="why"><b>Why:</b> with an address it reads your real colours and fonts off the page and uses them throughout. Without one, a description of a look you like is nearly as good. Either beats the default grey.</p>
+  </div>
+
+  <hr />
+  <h3>Two answers that are always fine</h3>
+  <p><strong>"Whatever you recommend."</strong> Every technical question has a recommended default. You are not expected to have an opinion about databases.</p>
+  <p><strong>"Not in version one."</strong> The skill asks directly what to leave out, and this is the answer that gets you something finished instead of something half-built.</p>
+</section>
+
+<!-- 8 -->
+<section id="ideas" class="rise">
+  <div class="stage"><span class="num">8</span><h2>Things worth building</h2></div>
+  <p class="lede">The best first app replaces a spreadsheet you already maintain, or a notebook you'd be lost without. Start there, not with the grand idea.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h4>Salon or grooming diary</h4>
+      <p>Appointments, clients, and the details you only learn the hard way — hates the dryer, always late, prefers the small room.</p>
+      <span class="say">"A diary for the salon that remembers the dogs."</span>
+    </div>
+    <div class="card">
+      <h4>Vet or dental client records</h4>
+      <p>Patients, owners, visit history and what's due next. The reminder list writes itself.</p>
+      <span class="say">"Client records and what each animal is due for."</span>
+    </div>
+    <div class="card">
+      <h4>Trades job sheets</h4>
+      <p>Jobs, addresses, what was quoted, what was done, photos before and after. Ends the glovebox-full-of-receipts problem.</p>
+      <span class="say">"Job sheets I can fill in on my phone at the van."</span>
+    </div>
+    <div class="card">
+      <h4>Tutor or small school roster</h4>
+      <p>Students, sessions, attendance and a note per lesson. Parents' reports come out of the notes you already made.</p>
+      <span class="say">"Who I taught, when, and what we covered."</span>
+    </div>
+    <div class="card">
+      <h4>Cleaning or maintenance rounds</h4>
+      <p>Properties, visits, checklists and sign-off. Staff tick it off on a phone; you see it from the office.</p>
+      <span class="say">"A checklist per property my cleaners tick off."</span>
+    </div>
+    <div class="card">
+      <h4>Committee or HOA requests</h4>
+      <p>Maintenance requests, who reported it, what was decided, what it cost. An audit trail that isn't an email thread.</p>
+      <span class="say">"Track maintenance requests and what we decided."</span>
+    </div>
+    <div class="card">
+      <h4>Coach or therapist client log</h4>
+      <p>Clients, sessions, plans and check-ins. Private per client, with a history you can actually search.</p>
+      <span class="say">"A private log of each client and their programme."</span>
+    </div>
+    <div class="card">
+      <h4>Stock or supplier orders</h4>
+      <p>What you carry, what's low, who you order it from and what you paid last time.</p>
+      <span class="say">"What's running low and who I buy it from."</span>
+    </div>
+  </div>
+
+  <div class="note plain">
+    <span class="tag">A good test</span>
+    <p>If you can describe the whole thing in two sentences without saying "and also", it's the right size for a first app. Everything else is version two — and version two is much easier once version one exists.</p>
+  </div>
+</section>
+
+<!-- 9 -->
+<section id="after" class="rise">
+  <div class="stage"><span class="num">9</span><h2>What happens after it's built</h2></div>
+
+  <table>
+    <thead><tr><th>What</th><th>Where it is</th></tr></thead>
+    <tbody>
+      <tr><td><b>Your app</b></td><td>Running on your machine. Start it any time with <code>pnpm dev</code>.</td></tr>
+      <tr><td><b>A help guide</b></td><td>If the app is for staff or customers, a <code>?</code> in the corner opens a guide written from <em>your own answers</em>. New staff read that instead of asking you.</td></tr>
+      <tr><td><b>DESIGN.md</b></td><td>A plain file listing your colours and fonts. Change a colour there and the whole app follows.</td></tr>
+      <tr><td><b>Your data</b></td><td>In a real database, with a full record of every change to its structure.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Two offers at the end</h3>
+  <p>Both are <strong>offered, never done for you</strong>:</p>
+  <ul>
+    <li><strong>Put it on GitHub</strong> — a backup with history. It'll be <em>private by default</em>, and it will tell you so before creating it.</li>
+    <li><strong>Put it online</strong> — a real web address you can open on your phone. Worth knowing: anyone with that link can open it, so it's a preview, not a launch.</li>
+  </ul>
+  <p>A proper launch — your own domain name, taking real payments, appearing in Google — is a separate conversation. Getting told that plainly is more useful than being half-launched by accident.</p>
+
+  <h3>Then check it's safe</h3>
+  <p>Once there's real data in it, run the other skill:</p>
+  <div class="code"><button class="copy">copy</button>/security-scanner</div>
+  <p>It writes a report of anything worth fixing. <strong>A finding is not a break-in.</strong> A brand-new app produces mostly low-priority notes — read the Critical and High counts first and ignore the noise.</p>
+</section>
+
+<!-- 10 -->
+<section id="wrong" class="rise">
+  <div class="stage"><span class="num">10</span><h2>When something goes wrong</h2></div>
+  <p class="lede">Every one of these came up while building a real app with this skill. Knowing the words helps you say the right thing to your agent.</p>
+
+  <h4>"Invalid origin" when you try to sign in</h4>
+  <p>The app moved to a different door number than it expected. Say: <em>"the app is on a different port — update the auth URL and restart it."</em></p>
+
+  <h4>"name can no longer contain capital letters"</h4>
+  <p>Your folder has a capital letter in it, and the naming rules don't allow that. The skill handles this itself now, but if you see it: <em>"work around the folder name."</em></p>
+
+  <h4>It asks which Vercel team to use</h4>
+  <p>You belong to more than one. <strong>Pick your own personal one</strong> — never a client's or an employer's, or your practice app ends up in their account.</p>
+
+  <h4>The times are wrong by a few hours</h4>
+  <p>A timezone problem, and a common one. Just say it plainly: <em>"the times are showing four hours early."</em> That's enough to fix it.</p>
+
+  <h4>It's been quiet for a while</h4>
+  <p>Installing takes a few minutes and looks like nothing is happening. Let it finish. If it's genuinely stuck, say <em>"what are you waiting on?"</em></p>
+
+  <div class="note">
+    <span class="tag">The general rule</span>
+    <p>Describe the symptom, not the cure. You can see the app; the agent can read the code. Between the two of you that's everything — and you're the only one who knows what it's <em>supposed</em> to do.</p>
+  </div>
+</section>
+
+<!-- 11 -->
+<section id="help" class="rise">
+  <div class="stage"><span class="num">11</span><h2>If you'd rather not do it alone</h2></div>
+  <p class="lede">Plenty of people read a guide like this, get halfway, and decide their time is better spent running their business. That's a perfectly sensible conclusion.</p>
+  <p>I'm Emile du Toit. I build software for small businesses, and I teach owners to do it themselves when that's what they'd prefer — through <strong>BrainIT Consulting</strong>.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h4>Have it built for you</h4>
+      <p>You describe the business, I build the app — the same way this guide describes, just without you at the keyboard. You end up owning the code and the accounts, not renting a subscription.</p>
+      <span class="say">"Just build it for me."</span>
+    </div>
+    <div class="card">
+      <h4>Learn to build it yourself</h4>
+      <p>Sitting alongside you while you build your own first app, so the second one doesn't need anybody. Best if you want this to become a skill rather than a purchase.</p>
+      <span class="say">"Walk me through my first one."</span>
+    </div>
+    <div class="card">
+      <h4>Get unstuck</h4>
+      <p>You've built something with an agent and hit a wall — it works but you don't trust it, or it broke and you can't tell why. A second pair of eyes on what you already have.</p>
+      <span class="say">"It works, but should I trust it?"</span>
+    </div>
+  </div>
+
+  <p><a href="https://brainitconsulting.com"><strong>brainitconsulting.com</strong></a> — have a look, or just get in touch and describe the problem.</p>
+
+  <div class="note plain">
+    <span class="tag">Worth saying</span>
+    <p>Nothing in this guide needs me. The skills are free, open source, and yours to use — that's the whole point of writing it down. The offer above is for people who'd rather buy the time back.</p>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p class="sig">Now go and build something lekker.</p>
+  <p>Field Manual No. 1 · <a href="https://github.com/brainit-consulting/DreamForgeSoftwareAgentSkills">DreamForge Software Agent Skills</a> · by Emile du Toit.</p>
+  <p>Want it built for you, or someone alongside you while you learn? <a href="https://brainitconsulting.com"><strong>BrainIT Consulting</strong></a> — brainitconsulting.com</p>
+  <p><code>start-an-app</code> is a fork of <a href="https://github.com/leonvanzyl/skills">leonvanzyl/skills</a> by Leon van Zyl. <code>security-scanner</code> is his too, from the <a href="https://github.com/leonvanzyl/agentic-coding-starter-kit">agentic coding starter kit</a>. Design-system format adapted from <a href="https://github.com/Leonxlnx/taste-skill">taste-skill</a>. All MIT.</p>
+</footer>
+
+</div>
+
+<script>
+  // copy buttons
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var text = btn.parentNode.textContent.replace(/^copy/, '').trim();
+      navigator.clipboard.writeText(text).then(function(){
+        btn.textContent = 'copied'; btn.classList.add('done');
+        setTimeout(function(){ btn.textContent = 'copy'; btn.classList.remove('done'); }, 1600);
+      });
+    });
+  });
+
+  // reveal on scroll
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var risers = document.querySelectorAll('main .rise');
+  if (reduce) {
+    risers.forEach(function(el){ el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){ if (e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -12% 0px' });
+    risers.forEach(function(el){ io.observe(el); });
+  }
+
+  // toc highlighting
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  var sections = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  var spy = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (!e.isIntersecting) return;
+      var i = sections.indexOf(e.target);
+      links.forEach(function(a, j){ a.classList.toggle('on', i === j); });
+    });
+  }, { rootMargin: '-15% 0px -70% 0px' });
+  sections.forEach(function(s){ if (s) spy.observe(s); });
+</script>
+</body>
+</html>
