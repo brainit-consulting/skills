@@ -107,7 +107,9 @@ Restate the plan in plain words before touching anything. Example shape:
 >
 > Sound right?
 
-Include the data model and the explicit **not in version one** list — those two lines are what stop a rewrite later. Also mention anything that needs something from them before it can work (Docker running, an API key, a provider account), so there are no surprises mid-build.
+The example above is a personal tool. **When the app is for anyone other than the user, add the help line too** — *"a `?` in the corner opens a short guide, written from what you've just told me, so someone new can work it out without asking you"* — as something they can decline rather than something you ask about. `references/help.md` explains why it isn't a question.
+
+Include the data model and the explicit **not in version one** list — those two lines are what stop a rewrite later. Also mention anything that needs something from them before it can work (a Vercel account, Docker running, an API key, a provider account), so there are no surprises mid-build.
 
 Get a clear go-ahead. Adjust anything they push back on. If the answer reopens what the app *is* rather than tweaking a detail, go back to Step 1a — that's cheaper now than after the schema exists.
 
@@ -123,8 +125,9 @@ Work through these in order. Each reference has a **Verify** section — complet
 6. AI features, if chosen → `references/ai.md`
 7. Design system, if question 7 got an answer → `references/design.md`
 8. Landing page and dashboard → `references/pages.md`
+9. In-app help guide, if the app is for anyone other than the user → `references/help.md`
 
-The order matters: payments and uploads both extend what step 3 built, step 7 must land before any page exists so everything inherits the tokens, and step 8 needs all of it in place. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
+The order matters: payments and uploads both extend what step 3 built, step 7 must land before any page exists so everything inherits the tokens, step 8 needs all of it in place, and step 9 documents what step 8 actually built rather than what was planned. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
 
 ## Step 4 — Make it theirs
 
