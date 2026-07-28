@@ -96,7 +96,7 @@ vercel link --yes --scope <team-slug>
 vercel integration add neon --scope <team-slug>
 ```
 
-`vercel link` writes `.env.local` and gitignores it on its own. `integration add` provisions the database, connects it to all three environments and runs `env pull` for you — no terms prompt, no browser step, and it works non-interactively under an agent. It also drops `.agents/skills/neon`, `.claude/` and `skills-lock.json` into the project; harmless, but that is third-party agent instruction arriving uninvited, so mention it rather than letting the user find it in `git status`.
+`vercel link` writes `.env.local` and gitignores it on its own. `integration add` provisions the database, connects it to all three environments and runs `env pull` for you — no terms prompt, no browser step, and it works non-interactively under an agent. It also drops `.agents/skills/neon`, `.claude/` and `skills-lock.json` into the project. **Do not wave these through as harmless** — they are third-party *agent instructions* that arrived uninvited, they can carry scripts, and they will shape how this and every later agent behaves in the project. Tell the user they appeared, read the diff before anything loads them, and let the user decide whether they get committed.
 
 If the CLI flow has changed, do it in the Vercel dashboard instead: **Storage → Neon → Install**, then link it to this project.
 
@@ -178,11 +178,11 @@ Start it with `pnpm db:up` (see the scripts below). Docker Desktop must be runni
 Real Postgres binaries downloaded as an npm package and run as a local process. Use this when the user won't install Docker *and* wants to work offline with a genuine Postgres server.
 
 ```bash
-pnpm add -D embedded-postgres
-pnpm approve-builds
+CI=true pnpm add -D embedded-postgres
+pnpm approve-builds embedded-postgres
 ```
 
-`pnpm approve-builds` is required — the package installs binaries in a postinstall script, and pnpm blocks those by default. Without it the package installs but cannot start.
+Approving the build is required — the package installs binaries in a postinstall script, and pnpm blocks those by default, so without it the package installs but cannot start. **Name the package explicitly.** Bare `pnpm approve-builds` opens an interactive checklist, which under an agent has no TTY to answer it — the same no-TTY problem `CI=true` solves everywhere else in this file.
 
 `scripts/db-local.ts`:
 

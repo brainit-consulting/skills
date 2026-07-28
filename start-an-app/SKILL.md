@@ -168,7 +168,8 @@ This is not a polish pass; it is most of the value. The scaffold in Step 3 is in
 - If payments were chosen: the test-mode checkout completes and the paid state is visible server-side.
 - `DESIGN.md` exists, `globals.css` matches it in both light and dark, and no component sets a colour outside the tokens.
 - If the help guide was built: `?` opens it, every verb from Step 1a has a chapter, and it reopens where the user left it.
-- **Missing keys degrade, never crash.** With `.env` values absent, the app still starts and the affected feature shows a friendly "not configured yet" notice.
+- **Missing keys degrade, never crash — for *optional* features.** With `.env` values absent, the app still starts and the affected feature (payments, AI, cloud storage, Google sign-in) shows a friendly "not configured yet" notice.
+- **The database is not optional, so it does not degrade.** With `DATABASE_URL` missing the app fails immediately and says what's wrong in one plain sentence — *"the database isn't connected yet: run `vercel env pull .env.local`"*. An app that starts, looks fine, and then errors on the first click is worse than one that refuses to start, because it sends the user looking in the wrong place.
 - Close with a plain-language summary: how to start the app (including `pnpm db:up` or `pnpm db:local` if the database runs on their machine), what each entry in `.env` is for, and two or three sensible next steps.
 - Where local and production differ, spell out the one-time switch: connect a Blob store for uploads, point `DATABASE_URL` at a hosted database if it isn't already, swap payment keys out of test mode. Each is a setting on the host, not a code change — say that, because it's the part people expect to be hard.
 - **Then offer the two things you deliberately didn't do**, one line each, and do neither without a clear yes:
