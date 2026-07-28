@@ -174,10 +174,10 @@
 
   .dash{stroke-dasharray:5 5; animation:march 22s linear infinite}
   @keyframes march{to{stroke-dashoffset:-200}}
-  /* the land tile is 156 wide and drawn twice, so translating by exactly
-     one tile width loops without a seam */
-  .spin{animation:spin 34s linear infinite}
-  @keyframes spin{to{transform:translateX(-156px)}}
+  /* the world map is 312 wide (360° of longitude) and drawn twice, so
+     translating by exactly one map width loops without a seam */
+  .spin{animation:spin 48s linear infinite}
+  @keyframes spin{to{transform:translateX(-312px)}}
 
   /* ---------- table ---------- */
   table{border-collapse:collapse; width:100%; max-width:var(--measure); font-size:.99rem; margin:0 0 1.2rem}
@@ -301,32 +301,20 @@
           <stop offset="90%" stop-color="#7cc9ef" stop-opacity=".28"/>
           <stop offset="100%" stop-color="#7cc9ef" stop-opacity="0"/>
         </radialGradient>
-        <!-- one tile of land, 156 wide; drawn twice so the spin loops seamlessly -->
-        <g id="lands" fill="#57a25c">
-          <path d="M250 96 q22 -14 44 -6 t30 14 q6 14 -12 20 t-40 6 q-24 -4 -28 -16 t6 -18 z"/>
-          <path d="M262 148 q16 -6 26 4 t8 26 q-2 20 -14 30 t-22 2 q-8 -14 -6 -32 t8 -30 z"/>
-          <path d="M330 116 q30 -12 52 -2 t14 22 q-6 12 -30 14 t-38 -8 q-8 -14 2 -26 z"/>
-          <path d="M344 176 q22 -8 34 4 t2 22 q-14 8 -30 2 t-6 -28 z"/>
-          <ellipse cx="308" cy="212" rx="14" ry="7"/>
-          <ellipse cx="386" cy="150" rx="9" ry="5"/>
-        </g>
       </defs>
       <!-- the world the agent works on: painted first, so the orbit and the
            four nodes sit in front of it -->
       <g>
         <circle cx="320" cy="150" r="94" fill="url(#halo)"/>
         <circle cx="320" cy="150" r="78" fill="url(#ocean)"/>
+        <!-- NASA Blue Marble, equirectangular, public domain. Drawn at
+             312 x 156 = 360° x 180°, twice and one map-width apart, so
+             translating by 312 loops with no visible seam. Same file both
+             times, so the browser fetches it once. -->
         <g clip-path="url(#globeClip)">
           <g class="spin">
-            <use href="#lands" opacity=".85"/>
-            <use href="#lands" x="156" opacity=".85"/>
-          </g>
-          <!-- graticule: equator and two parallels, drawn as ellipses so they
-               read as curvature rather than flat lines -->
-          <g fill="none" stroke="#eaf6ff" stroke-width=".7" opacity=".22">
-            <ellipse cx="320" cy="150" rx="78" ry="26"/>
-            <ellipse cx="320" cy="150" rx="78" ry="56"/>
-            <line x1="242" y1="150" x2="398" y2="150"/>
+            <image href="earth.jpg" x="242" y="72" width="312" height="156" preserveAspectRatio="none"/>
+            <image href="earth.jpg" x="554" y="72" width="312" height="156" preserveAspectRatio="none"/>
           </g>
         </g>
         <circle cx="320" cy="150" r="78" fill="url(#terminator)"/>
