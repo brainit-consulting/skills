@@ -59,6 +59,20 @@ Run this on each and keep the output:
 })();
 ```
 
+**The values come back as `lab()` and `oklab()` on any current site**, not `rgb()` — Tailwind v4 and most modern CSS emit them, and `getComputedStyle` hands them back unconverted. Do not regex the numbers out of them: `lab(94.2 0.69 2.96)` read as RGB gives a dark red where the real colour is near-white, and the whole palette comes out wrong while looking entirely plausible. Convert through a canvas, which does the colour maths for you:
+
+```js
+const c = document.createElement("canvas"); c.width = c.height = 1;
+const ctx = c.getContext("2d", { willReadFrequently: true });
+const hex = (css) => {
+  ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = "#000"; ctx.fillStyle = css;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+  return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("") +
+    (a < 255 ? ` (a=${(a / 255).toFixed(2)})` : "");
+};
+```
+
 Then **take a screenshot of each page** and read what the numbers can't tell you: how much air the layout has, whether sections are symmetric or offset, whether it feels warm or clinical, how loud the type is against everything else. Check whether the site has a dark mode (toggle `prefers-color-scheme`) — if it does, capture both.
 
 Numbers give you the palette and the type. The screenshot gives you the density and variance dials. You need both.

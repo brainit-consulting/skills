@@ -19,6 +19,10 @@ BETTER_AUTH_SECRET=<generated>
 BETTER_AUTH_URL=http://localhost:3000
 ```
 
+**`BETTER_AUTH_URL` must match the port the dev server actually got.** Next.js takes 3001, 3002, 3003… when 3000 is busy, and Better Auth checks the request origin against this value: if they disagree, every sign-up and sign-in fails with **`Invalid origin`** — a message that says nothing about ports and sends people hunting through their database and cookie settings instead.
+
+So read the port off the dev server's own output rather than assuming, write that value, and **restart the dev server** — `.env` is read at boot, so editing it while the server runs changes nothing and looks like the fix didn't work. If sign-in ever starts returning `Invalid origin` later, this is why: the port moved.
+
 ## Configure
 
 `src/lib/auth.ts` — use `provider: "sqlite"` or `provider: "pg"` to match the database branch:

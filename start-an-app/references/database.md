@@ -83,24 +83,42 @@ vercel whoami
 
 Signed in → carry on, and don't mention any of this; it's plumbing. Not signed in, or no CLI → **decide now, not after a failed command.** Either offer to walk them through `vercel login` (it opens a browser; they sign in, you can't do it for them), or move to option B or C without making it sound like a downgrade. What you must not do is announce a free hosted database and then discover halfway through that there's no account.
 
-Link the project and install the integration:
+**Ask which account before linking.** Many people belong to more than one Vercel team, and one of them is often a client's:
 
 ```bash
-vercel link
-vercel integration add neon
+vercel teams list
 ```
+
+One team → link and don't mention it. **More than one → ask, and never guess.** `vercel link --yes` refuses to choose anyway and errors demanding `--scope`, so guessing means picking wrong on purpose. Putting someone's side project into a client's team is the sort of mistake that costs a phone call.
+
+```bash
+vercel link --yes --scope <team-slug>
+vercel integration add neon --scope <team-slug>
+```
+
+`vercel link` writes `.env.local` and gitignores it on its own. `integration add` provisions the database, connects it to all three environments and runs `env pull` for you — no terms prompt, no browser step, and it works non-interactively under an agent. It also drops `.agents/skills/neon`, `.claude/` and `skills-lock.json` into the project; harmless, but that is third-party agent instruction arriving uninvited, so mention it rather than letting the user find it in `git status`.
 
 If the CLI flow has changed, do it in the Vercel dashboard instead: **Storage → Neon → Install**, then link it to this project.
 
-Then — **this is the step that matters** — in the Neon integration's settings, enable **"Create a branch for your development environment"**. That creates a persistent `vercel-dev` branch (a copy-on-write clone of `main`) and sets it as the *Development*-scope environment variables. Without it, local development points at production data.
+### The development branch does not create itself
 
-Pull the variables into the project:
+**`integration add` points production, preview *and* development at the same branch: `main`.** Nothing about it makes a dev branch, so the first `db:migrate` from someone's laptop lands on production. This is the one step that has to be done deliberately — and the Verify section below is what catches it when it's missed.
+
+Either enable **"Create a branch for your development environment"** in the Neon integration's settings — which creates a persistent `vercel-dev` branch and rewrites the Development-scope variables — or do the same explicitly: branch `main` in the Neon console, then repoint only the development scope:
 
 ```bash
+vercel env rm DATABASE_URL development --yes
+printf '%s' "<pooled url for the dev branch>" | vercel env add DATABASE_URL development
+vercel env rm DATABASE_URL_UNPOOLED development --yes
+printf '%s' "<direct url for the dev branch>" | vercel env add DATABASE_URL_UNPOOLED development
 vercel env pull .env.local
 ```
 
-That writes two values:
+Branching is copy-on-write, so the dev branch arrives with whatever schema and data `main` already had, in about a second.
+
+**If neither is done, say so plainly at hand-off** — *"your local app is writing to the same database the live site will use"* — rather than leaving the user with a claim of isolation that isn't true.
+
+`vercel env pull .env.local` refreshes the file at any time. Two values matter:
 
 | Variable | Connection | Used by |
 |---|---|---|
@@ -312,6 +330,14 @@ pnpm db:migrate    # applies pending migrations
 Read what `db:generate` produced before applying it. Drizzle cannot always tell a rename from a drop-plus-add, and the generated SQL is where that shows up — a `DROP COLUMN` you didn't intend is obvious in the file and invisible if you skip it.
 
 Commit the `drizzle/` folder. It is source code, not build output.
+
+**Any timestamp a human reads back needs `withTimezone: true`.** A plain `timestamp` is stored without a zone and comes back interpreted as UTC, so an appointment booked for 9:30am renders as 5:30am — wrong by exactly the user's offset, on every row, in a way they notice on day one and never trust again:
+
+```ts
+startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+```
+
+`defaultNow()` audit columns are fine either way; anything a person picks in a form is not.
 
 ## Verify
 
