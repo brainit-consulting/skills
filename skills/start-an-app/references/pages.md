@@ -34,6 +34,15 @@ Both the `:root` and `.dark` blocks exist. Whatever you change, check the app in
 Rules that hold regardless of direction:
 
 - Use shadcn components (`pnpm dlx shadcn@latest add ...`) rather than hand-rolling buttons and inputs. Add only what the pages actually use.
+- **A link that looks like a button needs `cn()` around `buttonVariants`.** Current shadcn generates Base UI components rather than Radix, so `<Button asChild><Link /></Button>` fails type-checking and the way through is the exported variants on the link itself. Applied raw, that renders with **no border at all**:
+
+  ```tsx
+  import { cn } from "@/lib/utils"; // shadcn init already wrote this
+
+  <Link className={cn(buttonVariants({ variant: "outline" }))}>Sign in</Link>
+  ```
+
+  `cva` concatenates the base class string with the variant's, so `border-transparent` from the base and `border-border` from the variant both reach the class list, and the winner is whichever Tailwind emitted last rather than the one you asked for. `cn()` runs tailwind-merge, which drops the loser. The `Button` component never shows this because it merges internally — so the bug appears only on links, which in practice means on the landing page, on the first thing a stranger sees. It is also nearly invisible: a missing 1px border reads as "that's just the style". `getComputedStyle(el).borderTopColor` returning `rgba(0, 0, 0, 0)` is the tell.
 - Give the app real spacing. Cramped, full-width, edge-to-edge content is the clearest tell of a scaffold: constrain the content width and let it breathe.
 - Every list needs an **empty state** — the first thing the user sees is zero rows, and "nothing here yet, add your first hike" is the difference between working and broken-looking.
 - Responsive from the start. Check one narrow viewport before calling it done.
