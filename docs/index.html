@@ -191,10 +191,12 @@
 
   /* ---------- footer ---------- */
   footer{border-top:1px solid var(--rule); padding:2.6rem 0 3rem; font-size:.84rem; color:var(--muted); line-height:1.6}
-  footer p{max-width:var(--measure); margin:0 0 .45rem}
+  /* full width, not the 68ch reading measure — these are one-line credits,
+     not prose, and the measure was forcing each onto two lines */
+  footer p{max-width:none; margin:0 0 .45rem}
   .sig{font-family:var(--display); font-style:italic; font-size:1.5rem; color:var(--gold); margin-bottom:.9rem}
   /* closing ornament: hairline — diamonds — hairline */
-  .end{display:flex; align-items:center; gap:1.1rem; margin-top:2.4rem; max-width:var(--measure)}
+  .end{display:flex; align-items:center; gap:1.1rem; margin-top:2.4rem}
   .end::before,.end::after{
     content:""; flex:1; height:1px;
     background:linear-gradient(to right,transparent,var(--rule-strong),transparent);
