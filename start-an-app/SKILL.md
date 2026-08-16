@@ -1,6 +1,6 @@
 ---
 name: start-an-app
-description: Interview the user in depth about what they actually want to build, then scaffold a working full-stack web app around it. Use when the user wants to start a new app, website, prototype, or SaaS; when they don't know what tech stack to pick; or when they want a solid working starting point fast. Covers requirements discovery, project setup, database (SQLite, or Postgres on a free hosted branch, in Docker, or fully local), sign-in, file uploads, payments, AI features, an optional DESIGN.md extracted from an existing site's brand, and a real landing page and dashboard.
+description: Interview the user in depth about what they actually want to build, then scaffold a working full-stack web app around it. Use when the user wants to start a new app, website, prototype, or SaaS; when they don't know what tech stack to pick; or when they want a solid working starting point fast. Covers requirements discovery, project setup, database (SQLite, or Postgres on a free hosted branch, in Docker, or fully local), sign-in, file uploads, payments, AI features, optional agent access over MCP so tools like Claude can work the app, an optional DESIGN.md extracted from an existing site's brand, and a real landing page and dashboard.
 ---
 
 # Start an App
@@ -96,10 +96,16 @@ Now the branches. One at a time, each with a recommendation. **Don't ask what th
 5. **"Should it do anything with AI — like answering questions, or writing text for you?"**
    → Only include AI plumbing if yes. If yes, mention they'll need an OpenRouter API key (free to create) and you'll show them where to get it — one key, many models.
 
-6. **"When someone who's never used this before arrives, what should they see first — a page explaining what it is, or straight into the thing itself?"**
+6. **"Do you want Claude to be able to work in this app for you — reading and updating it the way you would?"**
+   → No: skip it entirely. Nothing about agent access is scaffolded.
+   → Yes: say what it actually means, because the AI question above was something else. "You connect Claude to the app once, and from then on you can ask it to do the real work — add something, move something, tell you what's on there. It signs in as you, and it can only do what you can do." There is no API key to mind: it goes through the app's own sign-in and a consent screen.
+   → Say the two things that surprise people: it acts **as them**, so it inherits their permissions and nothing more; and every call it makes is written down, reads included, on a page they can see.
+   → `references/mcp.md`. It needs sign-in, so if they said no to question 2, say so plainly and add it — the same way payments does.
+
+7. **"When someone who's never used this before arrives, what should they see first — a page explaining what it is, or straight into the thing itself?"**
    → Decides the front door: a real landing page for something other people will sign up for, or straight into the app for a personal tool. Don't assume a marketing page — `references/pages.md` has the call.
 
-7. **"Do you already have a website? Paste the address and I'll match your colours and fonts. If not — is there a site whose look you like?"** *(optional — one ask, then move on)*
+8. **"Do you already have a website? Paste the address and I'll match your colours and fonts. If not — is there a site whose look you like?"** *(optional — one ask, then move on)*
    → A URL: extract the palette, type, shape and density from it and write them into a `DESIGN.md` the rest of the build obeys. `references/design.md`.
    → A vibe instead ("like Linear", "warm and friendly", "expensive and quiet"): equally good input — same file, skip the extraction.
    → Nothing, or "you decide": don't push. Write a short `DESIGN.md` from what the app *is*, which is what `references/pages.md` would have made you decide anyway.
@@ -142,11 +148,12 @@ Work through these in order. Each reference has a **Verify** section — complet
 4. File uploads, if chosen → `references/storage.md`
 5. Payments, if chosen → `references/payments.md` (requires step 3)
 6. AI features, if chosen → `references/ai.md`
-7. Design system → `references/design.md`
-8. Landing page and dashboard → `references/pages.md`
-9. In-app help guide, if the app is for customers or staff → `references/help.md`
+7. Agent access, if chosen → `references/mcp.md` (requires step 3)
+8. Design system → `references/design.md`
+9. Landing page and dashboard → `references/pages.md`
+10. In-app help guide, if the app is for customers or staff → `references/help.md`
 
-The order matters: payments and uploads both extend what step 3 built, step 7 must land before any page exists so everything inherits the tokens, step 8 needs all of it in place, and step 9 documents what step 8 actually built rather than what was planned. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
+The order matters: payments, uploads and agent access all extend what step 3 built, step 8 must land before any page exists so everything inherits the tokens, step 9 needs all of it in place, and step 10 documents what step 9 actually built rather than what was planned. Anything that changes `src/lib/auth.ts` means regenerating the Better Auth schema and running `db:generate` + `db:migrate` again — the reference files say where.
 
 ## Step 4 — Make it theirs
 
