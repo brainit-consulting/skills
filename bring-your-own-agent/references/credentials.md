@@ -246,7 +246,7 @@ Reason given for failure:
 Add the header and the identical request succeeds:
 
 ```
-$ curl ... -e https://127.0.0.1:8003/invoices/new/ -X POST ...
+$ curl ... -e https://127.0.0.1:8443/invoices/new/ -X POST ...
 HTTP/1.1 302 Found
 Location: /invoices/5/
 ```

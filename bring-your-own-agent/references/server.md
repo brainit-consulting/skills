@@ -4,7 +4,7 @@ Last verified: 2026-08-16
 
 **Purpose:** Turn the routes `discovery.md` found and the credential `credentials.md` proved into a small MCP server that lives in one folder inside the owner's repository, runs locally over stdio, and can only do the handful of things that were agreed.
 
-Everything below was run. The worked example is the folder that was generated for the `django_api` fixture, registered with `claude mcp add`, and driven by a real client; every block of output is pasted from that run.
+Everything below was run, except where a section says otherwise. The worked example is the folder that was generated for the `django_api` fixture, registered with `claude mcp add`, and driven by a real client; every block of output is pasted from that run.
 
 > **Shell:** the commands assume a POSIX shell. On Windows run them in Git Bash or WSL. Measured on Node 22.22.3 with `@modelcontextprotocol/sdk` 1.30.0 and `zod` 4.4.3.
 
@@ -160,7 +160,7 @@ export const listOrders = {
     // Second cap. The schema stops a caller asking for 5000; this stops the app
     // answering with 5000. django_api's list endpoint is unpaginated and ignores
     // an unknown ?limit= silently, returning every row with a 200.
-    const capped = Math.min(limit ?? 20, MAX_LIMIT);
+    const capped = Math.min(limit, MAX_LIMIT);
     const res = await api(`/api/orders/?limit=${capped}`);
     if (!res.ok) {
       log("list_orders", { limit: capped }, `error http_${res.status}`);
@@ -285,7 +285,7 @@ await server.connect(new StdioServerTransport());
 ./tools.js  (clean)
 ```
 
-Both messages name the fix, which is why this costs a minute rather than an hour — provided anybody ran `tsc` at all.
+Both messages name the fix, which is why this costs a minute rather than an hour — provided anybody ran `tsc` at all, **and provided `tsconfig.json` says `nodenext`**. See that file below; under `moduleResolution: "bundler"` none of these errors appears.
 
 **Registering three tools by hand, rather than looping over an array, is also deliberate**, and it has a mechanical reason as well as a readability one. A heterogeneous array of tool objects collapses to a union type, and `registerTool` then infers its generic from the first element. Measured: the loop version fails `tsc --strict` with `Property 'limit' is optional in type ... but required in type ...`, an error that names `limit` and has nothing to do with `limit`.
 
@@ -321,6 +321,37 @@ server.ts:19:22: ERROR: Top-level await is currently not supported with the "cjs
 ```
 
 The message names `cjs` and never names `package.json`, so the search starts in `server.ts`.
+
+### `agent-access/tsconfig.json`
+
+Small, and **not** a formality — the `.js` argument above is true only under this `module` setting, so writing a different one quietly removes the check:
+
+```json
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2022",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["server.ts", "tools.ts"]
+}
+```
+
+Measured, on a scratch copy of the folder with `.js` dropped from the `tools` import:
+
+```
+$ npx tsc --noEmit -p tsconfig.json          # module/moduleResolution: nodenext
+server.ts(23,60): error TS2835: Relative import paths need explicit file extensions in
+ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './tools.js'?
+
+$ npx tsc --noEmit -p tsconfig.json          # the same code, moduleResolution: bundler
+(no output)
+```
+
+**`bundler` is the trap**, because it is a perfectly reasonable thing to write and everything still passes. `TS2835` never fires, the import is left in a form Node will not resolve, and the only check that was going to catch it has been switched off by the file that was supposed to run it. `strict` matters for the same reason — the heterogeneous-array error at `:290` only appears under it.
 
 ### `agent-access/.env` and `.env.example`
 
@@ -445,6 +476,8 @@ The same call through the tool returned **50**, and said so:
 ```
 
 `?page_size=50` was measured too and is ignored the same way. **So send the cap and then apply it again to what comes back**, and log both numbers — `50 of 60` is the line that tells a reader the app is not paginating and the server is.
+
+**Say what this second cap does not do**, because it is easy to read it as more than it is. It truncates *after* `res.json()` has parsed the whole payload, so an app that ignores `limit` still transfers and deserialises every row before fifty are kept. It bounds what the assistant is handed — the failure the rule exists to prevent — and it does not bound what the process holds on the way there. On a table with a million rows the tool result is fine and the memory is not. Where that matters, the fix is upstream: get the app to paginate, or use the SQL variant below, where `LIMIT` is enforced by the database and only `capped` rows are ever built.
 
 Where a read goes to SQL instead, the cap is a bound `LIMIT` in the statement — see the database variant below.
 
@@ -583,28 +616,92 @@ Three things about it that cost an hour each, all from `credentials.md`:
 
 ## Variant: reading from the database, where there is no API for it
 
-Only where `discovery.md` found no route for that read, and only with the read-only credential `credentials.md` created and proved. **Reads only. There is no SQL write path in any generated server.**
+Only where `discovery.md` found no route for that read, and only with the read-only credential `credentials.md` created and proved. **Reads only. No generated tool changes a row over SQL.**
 
-The cap is a bound `LIMIT`, applied before the statement is built:
+**Open it with `node:sqlite`, built into Node 22 and later.** No dependency, so nothing is added to `package.json`:
 
 ```ts
-const capped = Math.min(limit ?? 20, MAX_LIMIT);
+import { DatabaseSync } from "node:sqlite";
+
+const db = new DatabaseSync(DB_PATH, { readOnly: true });
+```
+
+**`readOnly` — capital O.** This is the whole reason the driver is named here rather than left to the generator, and it was measured, three ways, against a copy of the fixture's database:
+
+```
+node:sqlite { readOnly: true }  (correct)   -> INSERT refused: attempt to write a readonly database
+   rows before/after: 3 3
+node:sqlite { readonly: true }  (near-miss) -> INSERT COMMITTED  <-- writable handle
+   rows before/after: 3 4
+node:sqlite {}                  (no option) -> INSERT COMMITTED  <-- writable handle
+   rows before/after: 4 5
+```
+
+**The lowercase spelling does not throw and does not warn.** It is an unrecognised property on an options object, so it is ignored in silence, and what comes back is an ordinary read-write handle that looks exactly like the safe one.
+
+**And the other obvious driver spells it the other way round — and, unlike this one, says so.** `better-sqlite3` takes lowercase `readonly`, and it checks for the mistake explicitly. Measured, same database, same probe:
+
+```
+better-sqlite3 { readonly: true }  (its spelling) -> refused: attempt to write a readonly database
+better-sqlite3 { readOnly: true }  (node's)       -> TypeError: Misspelled option "readOnly" should be "readonly"
+```
+
+So the two libraries are not merely inconsistent, they are **asymmetric in the direction that matters**: get it wrong on `better-sqlite3` and the process stops with a message naming the correct spelling; get it wrong on `node:sqlite` and you are handed a writable database and told nothing. Someone who learned the habit on the safe one carries it to the unsafe one and never finds out. That asymmetry is why the driver is named here rather than left to the generator — and why the check below is not optional even when the option looks right.
+
+**So prove it after opening, every time, whatever the driver.** One statement at start-up:
+
+```ts
+// A write statement that matches no rows: refused outright on a read-only
+// handle, and a no-op on a writable one. Never use an INSERT here - on the
+// failing branch it would perform the write it exists to forbid.
+const NOOP_WRITE = "UPDATE orders_order SET customer = customer WHERE 1 = 0";
+
+let refused = false;
+try {
+  db.prepare(NOOP_WRITE).run();
+} catch (e) {
+  refused = /readonly database/i.test(String(e));
+  if (!refused) throw e;              // some other fault - do not swallow it
+}
+if (!refused) {
+  throw new Error(
+    "This handle accepted a write. Refusing to start: the read-only option was not " +
+      "honoured - check its spelling. Nothing was changed.",
+  );
+}
+```
+
+Measured, the same three ways, and note the last column:
+
+```
+{ readOnly: true }  (correct)   -> refused: attempt to write a readonly database
+      rows/sum before: 3 136.49  after: 3 136.49
+{ readonly: true }  (near-miss) -> WRITABLE (no refusal)
+      rows/sum before: 3 136.49  after: 3 136.49
+{}                  (no option) -> WRITABLE (no refusal)
+      rows/sum before: 3 136.49  after: 3 136.49
+```
+
+It separates the three cases correctly **and changes nothing in any of them** — same row count, same total, before and after, on all three handles. That is the property that makes it usable as a start-up check: the probe cannot itself become the accident. It is also driver-independent — the same statement is refused with the same message by `better-sqlite3` opened `{ readonly: true }`, so nothing above has to be rewritten if the driver changes.
+
+Two other probes were tried and rejected on measurement. An `INSERT` separates the cases, but on the writable handles it **commits the row** — it performs the write it exists to prevent, which is how the fixture copy went from 3 rows to 5 while this was being worked out. And `BEGIN IMMEDIATE` changes nothing but **does not separate the cases at all**: SQLite defers acquiring the write lock, so it succeeded on the genuinely read-only handle too, and reported all three as writable. A probe that says "writable" for a safe connection fails closed, which is survivable; the point is that it proves nothing.
+
+Not "it is configured read-only" — **"a write was attempted and refused, on this handle, on this run"**. An option that was ignored passes every other check you can write.
+
+And a refusal here is still only evidence about the *connection*. `credentials.md`'s SQLite section is the authority on the rest and does not soften: a read-only mode chosen by the connecting code can be unchosen by the connecting code, so on SQLite the file permissions are doing the work and the owner must be told so in those words. On Postgres or MySQL the same probe is evidence about the *database*, because the permission lives there and the connection cannot grant itself one — which is why `credentials.md` creates `agent_readonly` rather than trusting a flag.
+
+Two smaller things from the same run: `node:sqlite` prints `ExperimentalWarning: SQLite is an experimental feature` on **stderr**, which is harmless here for the reason given above — stdout is the protocol and stderr is not. And the cap is a bound `LIMIT` in the statement, applied before it is built:
+
+```ts
+const capped = Math.min(limit, MAX_LIMIT);
 const rows = db.prepare(
   "SELECT id, customer, total, created_at FROM orders_order ORDER BY id DESC LIMIT ?"
 ).all(capped);
 ```
 
-Measured against `django_api`'s SQLite file opened `readOnly`:
-
-```
-returned: 3
-{"id":3,"customer":"Katherine","total":102,"created_at":"2026-08-16 18:22:27.234439"}
-INSERT: attempt to write a readonly database
-```
+That form has an advantage the HTTP version does not: the database returns `capped` rows, so nothing oversized is ever built in memory.
 
 **Note what the same row looks like down the two paths**, because this is the trap in mixing them. The API returned `"total":"102.00"` and `"created_at":"2026-08-16T18:22:27.234439Z"`. The database returned `"total":102` — a JavaScript number, the trailing zeroes and the decimal type gone — and a timestamp in a different format with no timezone marker. Same row, same instant, two shapes. An assistant comparing a figure from a SQL-backed tool against one from an API-backed tool is comparing two different things, and nothing in either result says so. **Where both paths exist for the same data, use the API for both.**
-
-That refused `INSERT` is evidence about the connection, not about the database — `credentials.md`'s SQLite section is the authority on why, and on why a SQLite fallback must be described to the owner as file permissions doing the work.
 
 ---
 
@@ -665,7 +762,19 @@ it was a choice and not an oversight.
 
 ## Running it
 
-... npm install, cp .env.example .env, claude mcp add with absolute paths ...
+    cd agent-access
+    npm install
+    cp .env.example .env      # then fill in APP_API_TOKEN
+
+Register it with a client that speaks MCP over stdio:
+
+    claude mcp add django-api-agent-access -- \
+      node <abs>/agent-access/node_modules/tsx/dist/cli.mjs <abs>/agent-access/server.ts
+
+Use absolute paths. The client chooses the working directory this process starts
+in, and it is not this folder.
+
+The app must be running: `python manage.py runserver 127.0.0.1:8003`.
 
 ## The credential
 
@@ -673,24 +782,30 @@ it was a choice and not an oversight.
 `agent-access/.env`, which `agent-access/.gitignore` keeps out of the
 repository. It is never returned by a tool and never written to the log.
 
+To rotate it, delete the token row as above and create a new one, then update
+`.env`. The old key stops working the moment the row is deleted.
+
 ## What it did
 
 Every call appends one JSON line to `agent-access/calls.log` — the time, the
 tool, the arguments it was given, and how it went:
 
-    {"at":"...","tool":"list_orders","args":{"limit":2},"outcome":"ok 2 of 3 rows"}
+    {"at":"2026-08-16T18:48:05.965Z","tool":"list_orders","args":{"limit":2},"outcome":"ok 2 of 3 rows"}
 
 The log is gitignored, holds no credential, and is the record of what the
 assistant actually did. Read it before believing any account of what happened.
 ```
 
-Five things must be in it, and the last is the one that gets dropped:
+That is the whole file, not an outline — a generated README with an ellipsis in it is a README nobody finished.
+
+Six things must be in it, and the last is the one that gets dropped:
 
 1. **Which path each tool uses** — API or database, per tool, in a table.
 2. **Whether the database fallback is in play at all.** If it is, `credentials.md`'s row-visibility disclosure goes here too: the assistant can see rows the app would normally hide, because filters written in the app's code are invisible to the database.
 3. **That the agent acts as one identity**, in the words `credentials.md` gives.
-4. **How to switch it off**, in one command, with what happens when you do.
-5. **That the in-app alternative was offered and the owner chose this**, with the date. Without that line, the next reader finds a folder full of workarounds and assumes nobody knew better. With it, they know the trade was made deliberately and can weigh it again on its merits.
+4. **How to run it** — install, the `.env` step, and the exact registration command with absolute paths — plus that the app itself has to be up. Whoever finds this folder in six months has to be able to start it without reading the source.
+5. **How to switch it off**, in one command, with what happens when you do.
+6. **That the in-app alternative was offered and the owner chose this**, with the date. Without that line, the next reader finds a folder full of workarounds and assumes nobody knew better. With it, they know the trade was made deliberately and can weigh it again on its merits.
 
 ---
 
@@ -705,7 +820,8 @@ Five things must be in it, and the last is the one that gets dropped:
 - [ ] Every list tool has a maximum in the advertised schema **and** applies it again to the rows that come back. Asking for more than the maximum was actually tried, and the response recorded.
 - [ ] The app was checked for whether it honours the limit parameter at all. If it ignores it, the log line records both numbers (`N of M rows`).
 - [ ] There is no delete tool, and no update tool that was not explicitly agreed.
-- [ ] There is no SQL write anywhere in the folder, and no flag or environment variable that would enable one.
+- [ ] No tool changes a row over SQL, and no flag or environment variable would enable one. The only write *statement* permitted in the folder is the start-up read-only probe, which matches no rows — an `INSERT` was not used for it.
+- [ ] If the database fallback is in play: the handle was opened read-only **and a write was attempted on it and refused, on this run**. The option is spelled as that driver spells it — `node:sqlite` takes `readOnly`, `better-sqlite3` takes `readonly` — and the check was run even though the spelling looked right, because `node:sqlite` ignores the wrong one in silence and hands back a writable database.
 - [ ] Every tool returns fields copied out one at a time. `grep -n "\.\.\." tools.ts` was read line by line and every spread found is of *request* options — on the fixture, `...init` and `...(init.headers ?? {})` and nothing else. No response body and no database row is spread into a result.
 - [ ] Read tools carry `readOnlyHint: true`; write tools carry `destructiveHint: false`.
 - [ ] Nothing writes to stdout except the transport. `grep -n "console.log" *.ts` returns nothing.
@@ -713,4 +829,4 @@ Five things must be in it, and the last is the one that gets dropped:
 - [ ] The server was registered with `claude mcp add` and reported `✔ Connected`, and at least one read tool was called and returned real rows.
 - [ ] One real write was performed and confirmed **twice** — read back through a different tool, and found by the owner in the app's own interface. Then undone, through the app.
 - [ ] `calls.log` was read after those calls, and the credential does not appear in it (`grep -c "$TOKEN" calls.log` returns 0).
-- [ ] The generated `README.md` names the path each tool uses, says the agent acts as one identity, says whether the database fallback is in play, gives the one command that switches it off, and records that the in-app alternative was offered and declined, with the date.
+- [ ] The generated `README.md` names the path each tool uses, says the agent acts as one identity, says whether the database fallback is in play, gives the commands to **run** it (install, `.env`, registration with absolute paths, and that the app must be up), gives the one command that switches it off, and records that the in-app alternative was offered and declined, with the date. No `...` anywhere in it.
