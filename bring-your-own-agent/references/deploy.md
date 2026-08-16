@@ -14,7 +14,7 @@ Everything below was run against the HTTP variant built for the `django_api` fix
 
 **The moment this server is reachable over a network, that stops being true, and nothing else about the server changes to compensate.** Whoever can send it a request has everything the app's credential can do — `credentials.md` already told the owner the agent acts as one fixed identity with no per-person permission screen; deployment is the point where that single identity becomes reachable from anywhere, by anyone holding one string. Not "anyone who can see the code" or "anyone on the same machine" — anyone who can reach the port, from wherever that is. A single bearer token is the entire perimeter. There is no second factor behind it, no consent screen, no per-caller scoping — `credentials.md`'s one-identity disclosure was written for a server nobody outside the machine could reach; here it is the whole of the defence.
 
-That is worth saying before any code, because it changes what "done" means. A stdio server is finished when `tsc` is clean and the tool list comes back. This one is not finished until the three checks at the bottom of this file have actually been run — not read, run — because a bearer check that looks right and was never tried is exactly the failure this file exists to prevent.
+That is worth saying before any code, because it changes what "done" means. A stdio server is finished when `tsc` is clean and the tool list comes back once. This one is not finished until every check under "What was observed" below has actually been run — not read, run, and more than once against the same running process — because a bearer check that looks right after a single request is exactly the failure this file exists to prevent.
 
 Two things do not change. Writes still go through the app's API, never SQL. There is still no delete tool. Both are enforced in `tools.ts`, and the transport swap below touches nothing there.
 
@@ -47,6 +47,13 @@ const { listOrders, getOrder, createOrder } = await import("./tools.js");
 
 const PORT = Number(process.env.AGENT_ACCESS_PORT ?? 8080);
 
+// Bind to localhost unless told otherwise. "Running it" below has the owner
+// try this on their own laptop first, and 0.0.0.0 there is live on whatever
+// network that laptop is on the moment the process starts - the same kind of
+// surprise the opening section of this file is about. Set AGENT_ACCESS_HOST
+// explicitly for a real deployment.
+const HOST = process.env.AGENT_ACCESS_HOST ?? "127.0.0.1";
+
 // No default. A default is the failure where the token protecting a
 // deployment is sitting in the repository, identical on every clone, and
 // nobody rotated it because nobody had to set it in the first place.
@@ -74,18 +81,18 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(hashA, hashB);
 }
 
-const server = new McpServer({ name: "django-api-agent-access", version: "1.0.0" });
-server.registerTool(listOrders.name, listOrders.config, listOrders.handler);
-server.registerTool(getOrder.name, getOrder.config, getOrder.handler);
-server.registerTool(createOrder.name, createOrder.config, createOrder.handler);
-
-// Stateless: no session ID, nothing kept in memory between calls. One
-// identity, no per-caller state - matching the one-identity disclosure this
-// server already makes in credentials.md and README.md.
-const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-await server.connect(transport);
-
 const httpServer = createServer(async (req, res) => {
+  // Only the one path this folder generates a server for. Anything else is a
+  // 404 rather than a silent pass-through to the transport, so a proxy rule
+  // written against /mcp is enforcing the same boundary the server does.
+  const { pathname } = new URL(req.url ?? "/", `http://${req.headers.host ?? HOST}`);
+  if (pathname !== "/mcp") {
+    res
+      .writeHead(404, { "content-type": "application/json" })
+      .end(JSON.stringify({ error: "not found" }));
+    return;
+  }
+
   // POST only. GET opens the transport's SSE stream and DELETE tears down a
   // session - this deployment uses neither, and each is attack surface this
   // server does not need to carry. Both are refused before the bearer check
@@ -101,7 +108,10 @@ const httpServer = createServer(async (req, res) => {
   // Access-Control-Allow-Origin: * would let a script running on any page in
   // any visitor's browser read the response - which for a bearer token means
   // reading the equivalent of the token holder's whole account. There is no
-  // consent screen behind this server to catch that call.
+  // consent screen behind this server to catch that call. `null` is safe
+  // here only because a cross-origin request carrying `Authorization` needs
+  // a CORS preflight first, and this server has no `OPTIONS` handler - the
+  // 405 above answers it. Add one later and this line needs revisiting.
   res.setHeader("access-control-allow-origin", "null");
 
   const auth = req.headers["authorization"];
@@ -113,19 +123,43 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  // A fresh server and transport for every request, not one built at module
+  // scope and reused. In stateless mode - sessionIdGenerator: undefined -
+  // the SDK forbids handling a second request on the same transport and
+  // throws "Stateless transport cannot be reused across requests"; the
+  // Node HTTP wrapper turns that throw into an empty response with nothing
+  // on stderr and nothing in calls.log. Measured: a transport built once at
+  // the top of this file answers the first request and then fails silently,
+  // forever, on every one after - the exact failure a verification check
+  // that makes only one request cannot see. Building fresh per request costs
+  // a few milliseconds and closes it outright.
+  const mcp = new McpServer({ name: "django-api-agent-access", version: "1.0.0" });
+  mcp.registerTool(listOrders.name, listOrders.config, listOrders.handler);
+  mcp.registerTool(getOrder.name, getOrder.config, getOrder.handler);
+  mcp.registerTool(createOrder.name, createOrder.config, createOrder.handler);
+  // Stateless: no session ID, nothing kept in memory between calls. One
+  // identity, no per-caller state - matching the one-identity disclosure this
+  // server already makes in credentials.md and README.md.
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  res.on("close", () => {
+    transport.close();
+    mcp.close();
+  });
+  await mcp.connect(transport);
   await transport.handleRequest(req, res);
 });
 
-httpServer.listen(PORT, () => {
-  console.error(`agent-access: 3 tools, http, port ${PORT}`);
+httpServer.listen(PORT, HOST, () => {
+  console.error(`agent-access: 3 tools, http, ${HOST}:${PORT}`);
 });
 ```
 
-Three things about the SDK's own shape, each read off `@modelcontextprotocol/sdk` 1.30.0 rather than assumed:
+Four things about the SDK's own shape, each read off `@modelcontextprotocol/sdk` 1.30.0 rather than assumed:
 
 - **`StreamableHTTPServerTransport` takes Node's `IncomingMessage`/`ServerResponse` directly** — it wraps the web-standard transport with `@hono/node-server`, which is already a transitive dependency of the SDK. That means `server-http.ts` needs no new package: `package.json` gains a script, not a dependency.
-- **`sessionIdGenerator: undefined` is stateless mode** — no session ID issued, no per-session state kept in memory. That is the right shape here: one credential, one identity, no session to hijack because there is no session.
-- **The bearer check has to run inside the request handler, before `transport.handleRequest` is called** — the transport has no hook for it. Nothing upstream of `createServer`'s callback enforces anything; the 405 and the 401 are both this file's code, not the SDK's.
+- **`sessionIdGenerator: undefined` is stateless mode — and stateless mode forbids reusing one transport across requests.** `webStandardStreamableHttp.js` carries the constraint two lines below the option itself: `if (!this.sessionIdGenerator && this._hasHandledRequest) throw new Error('Stateless transport cannot be reused across requests. Create a new transport per request.')`. A `McpServer`/`StreamableHTTPServerTransport` pair built once, outside the request handler, answers exactly one request correctly and then throws on every one after — and `@hono/node-server` turns that throw into an empty response, with nothing on stderr and nothing in `calls.log`, so the failure has no message pointing at it anywhere. The server above builds both fresh inside the handler for exactly this reason, and closes them on `res.on("close")` so nothing leaks across requests that never finish.
+- **The bearer check has to run inside the request handler, before `transport.handleRequest` is called** — the transport has no hook for it. Nothing upstream of `createServer`'s callback enforces anything; the 404, the 405 and the 401 are all this file's code, not the SDK's.
+- **Only `/mcp` is served.** Any other path is a 404 before the method or bearer check runs, so the path is an enforced boundary and not just a convention a proxy rule happens to agree with.
 
 Two additions to files `server.md` already generated:
 
@@ -145,11 +179,13 @@ Two additions to files `server.md` already generated:
 And two new keys in `agent-access/.env` — generate `AGENT_ACCESS_TOKEN` fresh for the deployment, don't reuse `APP_API_TOKEN`. They guard different things: `APP_API_TOKEN` is what this server presents *to the app*; `AGENT_ACCESS_TOKEN` is what a caller must present *to this server*. One leaking should not hand over the other.
 
 ```
-AGENT_ACCESS_PORT=8005
+AGENT_ACCESS_PORT=8080
 AGENT_ACCESS_TOKEN=<32 random bytes, hex — e.g. `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`>
 ```
 
-`.env.example` gets the same two keys with blank values, exactly as it already does for `APP_BASE_URL` and `APP_API_TOKEN`.
+`AGENT_ACCESS_HOST` is a third key, left out of the committed `.env.example` because most deployments never need to touch it — it defaults to `127.0.0.1`. Set it explicitly (`0.0.0.0`, or the address the deployment target expects) only once the owner has decided this server should be reachable from somewhere other than the machine it runs on. That decision is exactly the one this whole file exists to make deliberately.
+
+`.env.example` gets `AGENT_ACCESS_PORT` and `AGENT_ACCESS_TOKEN` with blank values, exactly as it already does for `APP_BASE_URL` and `APP_API_TOKEN`.
 
 Running it:
 
@@ -159,9 +195,33 @@ npx tsc --noEmit          # expect no output
 npm run start:http
 ```
 
+Then point a client at it. This is the step `server.md` ends on for the stdio server and this file did not have until this section was added — a deployed server nobody is pointed at is only half finished:
+
+```bash
+claude mcp add --transport http django-api-agent-access-http \
+  http://127.0.0.1:8080/mcp \
+  --header "Authorization: Bearer <the real token>"
+```
+
+Observed, against the fixture on port 8005:
+
+```
+$ claude mcp add --transport http django-api-agent-access-http \
+    http://127.0.0.1:8005/mcp --header "Authorization: Bearer <token>"
+Added HTTP MCP server django-api-agent-access-http with URL: http://127.0.0.1:8005/mcp to local config
+Headers: {
+  "Authorization": "[REDACTED]"
+}
+
+$ claude mcp list | grep django
+django-api-agent-access-http: http://127.0.0.1:8005/mcp (HTTP) - ✔ Connected
+```
+
+`claude mcp remove django-api-agent-access-http` reverses it. For a deployment reachable from outside the machine, the URL is wherever it is actually reachable — this only shows the local case because that's what could be run here.
+
 ---
 
-## Verification
+## What was observed
 
 Run against the `django_api` fixture's HTTP variant, port **8005**, with `AGENT_ACCESS_TOKEN` set to a freshly generated value.
 
@@ -214,6 +274,85 @@ data: {"result":{"tools":[{"name":"list_orders", ... },{"name":"get_order", ... 
 
 All three tools from `server.md`, with their schemas and annotations intact — `"annotations":{"readOnlyHint":true}` on the reads, `"annotations":{"readOnlyHint":false,"destructiveHint":false,"idempotentHint":false}` on `create_order`. The transport changed; nothing about what the tools are or what they're allowed to do did.
 
+**3b. The check that matters most: the server answers more than once.** A single successful request is not evidence this server works — see the note on stateless mode above. Same server, same token, `initialize` followed immediately by `tools/list`:
+
+```
+$ curl -s -X POST http://127.0.0.1:8005/mcp -H "Authorization: Bearer <token>" \
+    -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+    -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"verify-script","version":"1.0.0"}}}' \
+    -w '\nSTATUS:%{http_code}\n'
+event: message
+data: {"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"django-api-agent-access","version":"1.0.0"}},"jsonrpc":"2.0","id":0}
+STATUS:200
+
+$ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8005/mcp \
+    -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+200
+```
+
+Then three consecutive `tools/list` calls, ids 1 through 3, same running process, no restart between them:
+
+```
+tools/list #1 -> 200
+tools/list #2 -> 200   (a server built once at module scope 500s here, empty body, nothing logged)
+tools/list #3 -> 200
+```
+
+**A real client, not curl, making two real tool calls.** The SDK's own client library, connecting over the network and calling `list_orders` twice — a small script, run once and not part of the generated folder:
+
+```js
+// real-client-check.mjs — scratch, not generated, deleted after the run
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
+const transport = new StreamableHTTPClientTransport(
+  new URL("http://127.0.0.1:8005/mcp"),
+  { requestInit: { headers: { Authorization: `Bearer ${process.env.AGENT_ACCESS_TOKEN}` } } },
+);
+const client = new Client({ name: "deploy-md-verify-client", version: "1.0.0" });
+await client.connect(transport);
+console.log("call #1:", await client.callTool({ name: "list_orders", arguments: { limit: 2 } }));
+console.log("call #2:", await client.callTool({ name: "list_orders", arguments: { limit: 1 } }));
+await client.close();
+```
+
+```
+$ AGENT_ACCESS_TOKEN=<token> node real-client-check.mjs
+connecting...
+connected. serverInfo: {"name":"django-api-agent-access","version":"1.0.0"}
+tools/list -> list_orders, get_order, create_order
+--- call #1: list_orders({ limit: 2 }) ---
+{
+  "content": [{ "type": "text", "text": "[\n  {\n    \"id\": 3,\n    \"customer\": \"Katherine\", ... }\n]" }]
+}
+--- call #2: list_orders({ limit: 1 }) - the call that used to 500 ---
+{
+  "content": [{ "type": "text", "text": "[\n  {\n    \"id\": 3,\n    \"customer\": \"Katherine\", ... }\n]" }]
+}
+client closed cleanly after two tool calls
+```
+
+Both calls returned real rows read live from the app, through the same running server, over two separate HTTP requests. And a real MCP client registration, connected and listed as such:
+
+```
+$ claude mcp add --transport http django-api-agent-access-http \
+    http://127.0.0.1:8005/mcp --header "Authorization: Bearer <token>"
+Added HTTP MCP server django-api-agent-access-http with URL: http://127.0.0.1:8005/mcp to local config
+
+$ claude mcp list | grep django
+django-api-agent-access-http: http://127.0.0.1:8005/mcp (HTTP) - ✔ Connected
+```
+
+**Wrong path, any token → 404, before the method or bearer check runs:**
+
+```
+$ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8005/anything -H "Authorization: Bearer <token>" -d '{}'
+404
+$ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8005/anything -d '{}'
+404
+```
+
 **GET and DELETE → 405, with or without a token:**
 
 ```
@@ -236,17 +375,30 @@ The method check runs before the bearer check, so the right token on the wrong m
 
 ```
 $ AGENT_ACCESS_TOKEN= npx tsx server-http.ts
-H:\...\agent-access\server-http.ts:27
+H:\skills\fixtures\django_api\agent-access\server-http.ts:34
   throw new Error(
         ^
 Error: AGENT_ACCESS_TOKEN is not set. It belongs in agent-access/.env, generated
 fresh for this deployment - see deploy.md. Nothing was started.
-    at <anonymous> (H:\...\agent-access\server-http.ts:27:9)
+    at <anonymous> (H:\skills\fixtures\django_api\agent-access\server-http.ts:34:9)
+
+Node.js v22.22.3
+exit code: 1
 ```
 
-Exit code 1, no port opened. The alternative — falling through to `undefined` and comparing every request against the string `"undefined"` — would still refuse every real caller, right up until someone typed `Authorization: Bearer undefined` for an unrelated reason and got in. The `throw` costs three lines and closes that off entirely, the same trade `server.ts` already makes for `APP_API_TOKEN`.
+No port opened afterward. The alternative — falling through to `undefined` and comparing every request against the string `"undefined"` — would still refuse every real caller, right up until someone typed `Authorization: Bearer undefined` for an unrelated reason and got in. The `throw` costs three lines and closes that off entirely, the same trade `server.ts` already makes for `APP_API_TOKEN`.
 
 **Not exercised in this run:** DNS-rebinding protection (`allowedHosts`/`allowedOrigins` on the transport options), TLS termination, and running behind a reverse proxy. This variant is a bearer check on a bare HTTP server — putting it behind a proxy that terminates TLS is the owner's infrastructure choice and outside what this skill generates. If the owner's proxy strips or rewrites the `Authorization` header, that surfaces as every request failing the bearer check with a 401 that looks identical to a wrong token — check what the proxy forwards before assuming the token is bad.
+
+---
+
+## What changes in the generated `README.md`
+
+`server.md` makes that file the six-months-later reader's only source, and lists what it must say: how to run the server, how to switch it off, and that the assistant acts as one fixed identity. Deploying changes all three, and the README has to change with them — not stay describing the stdio server while a second one runs beside it:
+
+- **How to run it** gains a second entry: `npm run start:http`, alongside `claude mcp add` for stdio. Say which one is actually running, since only one owner's deployment is real at a time even though both scripts exist in the folder.
+- **How to switch it off** gains a second, independent lever. Revoking `APP_API_TOKEN` (as `server.md` already documents) stops the server from reaching the app, but the server keeps answering `tools/list` and rejecting calls with an app-side 401 — a caller who only wanted to confirm the server was off would see it still respond. Stopping the process, or unsetting `AGENT_ACCESS_TOKEN` and restarting it, is the lever that actually stops the server answering.
+- **The one-identity paragraph gains a sentence.** `server.md`'s README text says the assistant "acts as one fixed login." Once deployed, add: *this login is now reachable from the network by anyone holding the bearer token in `agent-access/.env` — not only from this machine.* That is the fact this file's opening section exists to make unmissable, and the README is where the next reader finds it after the deployment itself is forgotten.
 
 ---
 
@@ -256,8 +408,13 @@ Exit code 1, no port opened. The alternative — falling through to `undefined` 
 - [ ] The token comparison is `timingSafeEqual` on two fixed-length hashes, not `===` and not a bare `timingSafeEqual` on the raw strings (which throws on a length mismatch).
 - [ ] `AGENT_ACCESS_TOKEN` has no default anywhere in `server-http.ts`. The server was actually started with it unset and it refused, rather than starting and failing on the first request.
 - [ ] `AGENT_ACCESS_TOKEN` and `APP_API_TOKEN` are different values. One is presented to this server; the other is presented to the app.
-- [ ] `GET` and `DELETE` were actually sent, not reasoned about, and both returned 405 — including a `GET` carrying the correct token, to confirm the method check runs first.
+- [ ] **The `McpServer` and `StreamableHTTPServerTransport` are constructed inside the request handler, not at module scope.** A server built once and reused answers exactly one request and then fails silently on every one after — this was measured, not assumed, and is the one mistake in this file that a single successful `curl` cannot catch.
+- [ ] **The server was asked more than once.** At least three consecutive `tools/list` calls on the same running process all returned 200 — not one call read as proof the server works.
+- [ ] **A real MCP client — not curl constructing JSON-RPC by hand — connected over the network and made at least two tool calls, both of which succeeded**, in the shape of `server.md`'s own client-connection check.
+- [ ] `GET` and `DELETE` were actually sent, not reasoned about, and both returned 405 — including a `GET` carrying the correct token, to confirm the method check runs first. A request to any path other than `/mcp` was actually sent and returned 404, with or without a token.
 - [ ] The no-token and wrong-token requests were actually sent and returned 401 with identical bodies. The right-token request was actually sent and returned the tool list, with the reads' `readOnlyHint: true` and the write's `destructiveHint: false` intact.
-- [ ] No wildcard CORS header is set anywhere in `server-http.ts`.
+- [ ] No wildcard CORS header is set anywhere in `server-http.ts`. If `access-control-allow-origin: null` is kept rather than omitted, the file says the missing `OPTIONS` handler (405 on preflight) is what makes it safe, not decoration.
+- [ ] The server binds `127.0.0.1` by default; a wider bind (`0.0.0.0` or otherwise) is something the owner set, not something that happened without being asked.
 - [ ] `agent-access/tools.ts`, `agent-access/server.ts` and the stdio registration from `server.md` are unchanged. This is an additional entrypoint, not a replacement.
+- [ ] The generated `README.md` was updated for the deployed case: the second way to run it, the second (correct) way to switch it off, and the one-identity paragraph's added network sentence.
 - [ ] Anything not exercised in this verification run — DNS-rebinding protection, TLS, a reverse proxy — is named as not exercised, not presented as covered.
