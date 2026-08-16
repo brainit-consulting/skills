@@ -665,9 +665,19 @@ Verified, observed:
 - No credential in `calls.log`, no `console.log` in either source file, no spread
   of a response into a result.
 
-**Not verified:** either tool against real data. No credential existed, for the
-reasons above, and inventing one would have been the hand-wave this skill spends
-a whole section forbidding.
+**Not verified:** either tool against real data — and the two were blocked by
+different walls, so each is named separately.
+
+- **`list_transactions`** had no **session cookie**. Sign-up issued none and
+  sign-in was refused until an email was verified, as above.
+- **`ingest_transactions`** had no **`fbk_` connection key**. Those are minted by
+  `createConnectionTokenAction`, which is a Server Action — so the credential the
+  write tool needs is itself locked behind the same thing that put nine tenths of
+  the app out of reach. There is no HTTP endpoint that issues one, and no
+  command-line path to it.
+
+Inventing either would have been the hand-wave this skill spends a whole section
+forbidding.
 
 Two further limits on this run, both worth knowing. The server was driven over
 stdio by a script rather than registered with `claude mcp add`, so as not to
@@ -675,11 +685,12 @@ write to the operator's own client configuration — it proves the same protocol
 exchange, but `server.md`'s registration line is still unrun outside its own
 fixture. And the run left one artefact it could not clear: an account created
 through FlatBooks' own sign-up API while the dev server ran against the
-project's `test` database branch. Database access was unavailable in the
-session, so which branch the row landed in could not be confirmed, and FlatBooks
-exposes no delete-user endpoint to remove it through the app. It is a row, not a
-file; `git status` is clean either way. It is recorded here rather than left for
-somebody to find.
+project's `test` database branch — the one its own integration tests write to and
+clear down, rather than the branch holding the owner's books. Database access was
+unavailable in the session, so which branch the row landed in could not be
+confirmed, and FlatBooks exposes no delete-user endpoint to remove it through the
+app. It is a row, not a file; `git status` is clean either way. It is recorded
+here rather than left for somebody to find.
 
 ### The one that surprised us
 
