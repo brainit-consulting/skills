@@ -30,6 +30,12 @@ Apple Human Interface Guidelines for the web: builds and reviews frontends so th
 
 Both of these previously lived only in an install directory under two names that collided with different skills in [DreamForgeSoftwareAgentSkills](https://github.com/brainit-consulting/DreamForgeSoftwareAgentSkills) — `audit-my-app` and `apple-hig-compliance`, which are a slash-command audit dispatcher and a WCAG compliance auditor respectively. Same names, different jobs. These two were renamed because they are the pair that wasn't published anywhere.
 
+### `bring-your-own-agent`
+
+Adds agent access over MCP to an app somebody already has, so Claude can do its real work in it — reading it and changing it the way the owner would. It reads the app to find what it can do, agrees a list of capabilities with the owner, then generates one new folder, `agent-access/`, holding a small MCP server that talks to the app's own API. Not a line the owner wrote is touched, and deleting the folder puts the app back exactly as it was.
+
+Worth knowing before installing it. **The assistant acts as one fixed login** — no consent screen, no per-person scoping, and no way to revoke access for one person without cutting off everyone; anything that login can see or change, the assistant can too. **An app with no API gets reads only**: writes always go through the app's own API, never around it, so a template-rendered app that only returns HTML pages can be read from but not written to. Finding what an app can be asked to do is **written down and verified for Django, Express and FastAPI**, and covered for the **Next.js App Router on the evidence of one real app** rather than a fixture; Rails and Laravel aren't covered at all. Where no route exists for a read, the fallback is a direct database login the database itself refuses to let write — **on SQLite that can't exist at all**, since SQLite has no users, roles or `GRANT`, so those apps get API-only reads regardless. And it runs **locally, over stdio**, by default, started by whatever you talk to Claude in — it doesn't work from Claude on a phone or from claude.ai unless deliberately deployed.
+
 ## What this fork changes
 
 ### The dev database no longer leads with Docker
@@ -139,6 +145,10 @@ npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill start-an
 
 ```bash
 npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill security-scanner
+```
+
+```bash
+npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill bring-your-own-agent
 ```
 
 **Working on the skill itself** — symlink this repo so edits take effect immediately (PowerShell, needs Developer Mode or an elevated shell):
