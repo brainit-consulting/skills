@@ -6,6 +6,8 @@ Last verified: 2026-08-16
 
 Everything below was run, except where a section says otherwise. The worked example is the folder that was generated for the `django_api` fixture, registered with `claude mcp add`, and driven by a real client; every block of output is pasted from that run.
 
+**One edit was made to it afterwards and has not been re-run against `django_api`** — the redirect handling from *A redirect is not an answer* below: `redirect: "manual"`, the `redirectedAway()` helper and the 3xx branch in each of the three handlers. That behaviour is measured, on a different app: the three-way comparison of `"error"`, the default and `"manual"` was run against `django_html`, and the message the branch returns was observed on the validation app. The composite printed below typechecks under the `tsconfig.json` given here. The fixture folder itself still carries the older `redirect: "error"`, so treat the redirect code as sound and as unrun in this configuration.
+
 > **Shell:** the commands assume a POSIX shell. On Windows run them in Git Bash or WSL. Measured on Node 22.22.3 with `@modelcontextprotocol/sdk` 1.30.0 and `zod` 4.4.3.
 
 ---
@@ -798,6 +800,8 @@ Three things about it that cost an hour each, all from `credentials.md`:
 
 Only where `discovery.md` found no route for that read, and only with the read-only credential `credentials.md` created and proved. **Reads only. No generated tool changes a row over SQL.**
 
+**On SQLite there is no such credential to create**, and that does not make this section unreachable — it makes it conditional. `credentials.md`'s SQLite rule is the gate: API-only reads are the default, and this variant is built only where a direct read was genuinely required *and* the owner was told, at the moment it was offered, that the file's permissions rather than the database are doing the work. Built without that sentence having been said, everything below is a read-only handle protecting nobody.
+
 **Open it with `node:sqlite`, built into Node 22 and later.** No dependency, so nothing is added to `package.json`:
 
 ```ts
@@ -1083,6 +1087,8 @@ Six things must be in it, and the last is the one that gets dropped:
 - [ ] Where a list endpoint takes no limit parameter: the tool does not send one, its comment says the app returns everything, and the log line records both numbers.
 - [ ] Where a tool reads CSV: columns are selected by **header name**, not by position; a real parser was used rather than a split on `,`; and every parsed row was checked to have as many fields as the header. (Measured for the shape of the endpoint; the parsing rules are ordinary practice, not measured here.)
 - [ ] The credential is in `agent-access/.env`, `.env` is named in `agent-access/.gitignore`, and `.env.example` with blank values is what gets committed.
+- [ ] **The promise the skill is named for was measured, not asserted.** After the folder was generated and `npm install` had run, `git status --porcelain` in the owner's repository returned exactly one line — `?? agent-access/` — and nothing modified. Anything else is a file the owner wrote being changed, whatever wrote it.
+- [ ] `git check-ignore -v agent-access/.env` named `agent-access/.gitignore` as the rule that ignores it — so the credential is protected by the folder's own file and the repository's `.gitignore` was never touched.
 - [ ] The server refuses to start when the credential is missing, with a message naming `.env` — rather than starting and failing at the first call.
 - [ ] `.env` and `calls.log` are opened by a path derived from `import.meta.url`, not from the working directory.
 - [ ] Revocation was **tested, not described**: the credential was actually deleted, a tool was called, and the failure observed — then the credential reissued and `.env` updated.

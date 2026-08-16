@@ -274,7 +274,7 @@ That asymmetry is the whole point: **an over-match is a line you read and discar
 
 Two gaps the pattern still has, both of which the eye closes:
 
-- **`app.route('/path')` chains give up the path but not the verbs** when the `.get(…)` / `.delete(…)` links sit on their own continuation lines. The pattern flags the `app.route(` line; read the lines under it for the verbs.
+- **`app.route('/path')` chains give you the path but not the verbs** when the `.get(…)` / `.delete(…)` links sit on their own continuation lines. The pattern flags the `app.route(` line; read the lines under it for the verbs.
 - **A path built from a variable** (`app.get(BASE + '/things', …)`) shows up as a route with no readable URL. Read the variable.
 
 **Why not introspect the router stack.** `app._router.stack` does exist and can be walked, but three things observed on this fixture rule it out as the primary method:
@@ -628,13 +628,15 @@ The honest options, offered in this order:
 2. Build agent access inside it — `start-an-app/references/mcp.md`.
 3. Accept a read-only integration, which is often genuinely useful.
 
-Reads from an HTML app are workable — the page is parseable and the shape rarely changes without someone noticing. It is only writes that cannot be done honestly.
+Reads from an HTML app are workable, but **not by parsing its pages**. The read path that is written down is the database fallback — `credentials.md` for a credential the database itself refuses to let write, `server.md`'s database variant for the tool — and that path has a shape, a row cap and a field-selection rule specified for it. Nothing in `server.md` specifies any of those for a tool that scrapes a page, so nothing here authorises one. It is only writes that cannot be done honestly at all.
 
 ---
 
 ## Not yet supported
 
 **Rails, Laravel and Go.** None has a discovery section here, and the skill should say so plainly rather than improvise one.
+
+What happens after saying so is in `SKILL.md` Step 2, and it is a choice rather than a dead end: the routes can be read out of the code by hand and confirmed by the owner one at a time, in which case the list is announced as unverified and stays unverified to the hand-off — or they wait for a section here that has been run. Neither of those is improvising a method and calling the result a discovery pass, which is the only thing ruled out.
 
 The reason is that the sections above are not documentation summaries. Every command in them was run against a live app, and every one of them turned up something the documentation would not have: `show_urls` is absent from a stock Django install; `app.routes` crashes on current FastAPI and reports no API before it does; `app.router` throws on Express 4 rather than returning `undefined`. All three were the *obvious* method. A section written without a running app to check it against would have shipped all three.
 
@@ -654,7 +656,7 @@ Rails, Laravel and Go each have the same shape of problem waiting — implicit r
 - [ ] If the app would not boot and the list was inferred, the words "inferred" and "may be incomplete" appear in what was told to the owner.
 - [ ] Every enumerated route was sent one request and **its status recorded**, per route. Only 404s and routes broken on every verb were dropped. (DRF format-suffix routes are the usual casualty — check for a 500.)
 - [ ] No route was dropped on a **405**. Every 405 was re-probed with the verb its source exports, and where the stack answers 401 before 405, it was re-probed again once a credential existed.
-- [ ] The owner was asked what they *do* in the app, in their own words, **before** the route list was shown to them — and every item on that list was mapped to a route or reported as unreachable.
+- [ ] The owner was asked what they *do* in the app, in their own words, **before any route was enumerated** — not merely before the list was shown to them — and every item on that list was mapped to a route or reported as unreachable.
 - [ ] The report gives two numbers, not one: how many things the app does, and how many of them can be reached over HTTP. Where the second is much smaller, that was said at interview step 2.
 - [ ] Trailing-slash behaviour was measured, not assumed: the exact URL recorded is the one that returned 200, not the one that returned 301 or 307.
 - [ ] Every route was probed **without** credentials and its status recorded. A single unauthenticated 200 was not read as "no auth on this app".

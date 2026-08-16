@@ -425,6 +425,17 @@ route is a file"*. That turned out to be true and useless — see below.
 anywhere today. What it needs was measured here and is in the three findings
 that follow.
 
+### Rails was declared for v1 and did not ship
+
+*v1 stacks* above names **Rails, Django, Express, FastAPI**. Three of those
+shipped; Rails did not, and it sits under `discovery.md`'s *Not yet supported*
+alongside Laravel and Go. The reason is that section's own gating rule at the
+head of this file: Rails has no toolchain on this machine, so its implicit
+routing, its auth convention and its HTML-only case could only have been written
+out of documentation — which is exactly the failure that rule exists to prevent,
+and which the three shipped sections each caught in their *obvious* method.
+Next.js App Router shipped in its place, on one real app, and says so.
+
 ### The routes are not the app
 
 FlatBooks has 18 files under `src/app/api/**/route.ts`. Sorted by what an

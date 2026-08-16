@@ -4,7 +4,7 @@ Last verified: 2026-08-16
 
 **Purpose:** Get one working credential out of an app somebody else built, prove it works before anything is built on top of it, and — where the fallback reads the database directly — make the database itself refuse writes rather than trusting the code not to attempt them.
 
-`discovery.md` names the mechanism. This file obtains it, sends it, and tests it. Everything below was run against live apps and live databases; every block of output is pasted from a terminal.
+`discovery.md` names the mechanism. This file obtains it, sends it, and tests it. Everything below was run against live apps and live databases and every block of output is pasted from a terminal, with one exception that says so where it appears — the three properties of the validation app's accountant invite, which were read out of that app's source rather than exercised.
 
 > **Shell:** the commands assume a POSIX shell — single-quoted `curl -w` format strings and heredocs. On Windows run them in Git Bash or WSL rather than PowerShell. One command uses `grep -oP`, which needs GNU grep; a portable `sed` alternative is given beside it for macOS.
 
@@ -418,6 +418,8 @@ Two things follow.
 - the grant is re-checked on every request, so the owner revoking it in the interface takes effect immediately, with nobody logged out of anything.
 
 That is the same set of properties the dedicated Django token gives you, obtained without touching the database and offered by the app on purpose. Where it exists, prefer it — over a new login, and over borrowing the owner's.
+
+**Those three properties were read out of the validation app's source, not exercised.** No credential was ever obtained on that app, so unlike everything else in this file the invite was never accepted and no request was ever sent as it. Take the shape as sound and check the three properties on the app in front of you.
 
 **And prove the credential against data, not against a status code.** A 200 is not evidence that this identity can see anything. Call one read, count the rows, and check the number against what the owner sees on their own screen. **A 200 with an empty list is an unproven credential**, and it is the one failure in this file that survives every other check.
 
