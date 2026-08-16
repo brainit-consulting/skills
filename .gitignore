@@ -1,1 +1,4 @@
 .vercel
+
+# Local fixture apps for verifying discovery. Not shipped.
+fixtures/

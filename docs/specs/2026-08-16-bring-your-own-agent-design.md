@@ -350,3 +350,379 @@ Per-user scoping, consent screens, OAuth. Those need the app's cooperation, whic
 is decision 2 traded away on purpose. An app that wants them should build agent
 access *inside* itself — which is `start-an-app/references/mcp.md`, and the
 cross-reference should say so.
+
+## What running it found
+
+Run on 2026-08-16 against `H:\flatbooks`, following `SKILL.md` as written rather
+than from memory of building it. Every status code, header and message below was
+observed on a running app; nothing here is inferred.
+
+Two things did not happen and are said first, because a validation section that
+buries them is worse than none.
+
+**No verified read.** The server was built, connected, and made a real call to
+the running app — but no credential could be obtained, so neither tool was ever
+run against real data. Both are reported **unverified**, and the reason is a
+finding in itself; it is *Getting in* below.
+
+**Django is unverified in the wild.** There is no Django app on this machine
+outside the skill's own fixtures. `dir /s /b H:\manage.py` — unlimited depth,
+the whole drive — returns four files: the three under `H:\skills\fixtures\`, and
+`H:\python\Lib\site-packages\pinecone\manage.py`, which is a library module for
+managing Pinecone indexes with no `settings.py` beside it and no Django in it. A
+`find` to depth eight, run separately, agrees, and so does a third check from
+the other end: of the 34 `requirements*.txt`, `pyproject.toml` and `settings.py`
+files on the drive, **not one names Django**. So decision 1 — *any stack* — is
+still tested only against apps written for this skill, and the one foreign app
+available was Next.js. **The fixtures are not evidence and this section does not
+treat them as any.**
+
+### Step 0 fired, on two triggers at once
+
+It fired, and it fired at the right moment — the stack is legible from
+`package.json` while Step 1 is still confirming which app this is, and Step 0
+says to raise it the moment the stack is recognised. FlatBooks matched two of
+the three triggers: Better Auth 1.6.11 is in its dependencies, and it is
+accounting software with a bank feed, invoices and Stripe.
+
+The text the skill produces is `SKILL.md`'s own, with the app's words in it:
+
+> Your app already has proper sign-in — Better Auth. That means FlatBooks can do
+> this the good way: the assistant asks *you* for permission, acts only as you,
+> and can only do what you could do — and you can take that away again whenever
+> you like. That is `start-an-app/references/mcp.md`, and it is a path that has
+> been built before.
+>
+> What I can build here is simpler and quicker. It sits beside FlatBooks and
+> works as one fixed login, so anything that login can see or change, the
+> assistant can too. There is no permission screen, and no way to give one
+> person less access than another. This is your books — a bank feed, your
+> clients' names and what they owe — so that sentence is heavier here than it
+> would be for a to-do list. What is actually in there, and who would mind if it
+> were read?
+>
+> The good way is more work and touches your app's code. Which would you rather?
+
+No defect. It named the better path by file, put the choice in plain words, did
+not decide, and did not hand off. **This is the text for the appendix.**
+
+One thing it does not yet say, and should, is in the next finding.
+
+### The stack Step 0 recommends is the stack discovery cannot read
+
+`discovery.md` covers Django, Express and FastAPI, and its *Not yet supported*
+section names Rails, Laravel and Go. **Next.js appears in neither list.** Its
+`Verify` says *the stack is one of Django, Express or FastAPI; if not, the owner
+was told it is not covered* — so the skill, run as written on FlatBooks, must
+tell the owner their stack is uncovered one paragraph after Step 0 told them
+their app was special *because* of that stack.
+
+That is not dishonest, but it is a bad minute, and the design is the reason: it
+asserts that reading routes is *"trivially true for Express and Next.js, where a
+route is a file"*. That turned out to be true and useless — see below.
+
+**Gap → `discovery.md` needs a Next.js App Router section.** It is not written
+anywhere today. What it needs was measured here and is in the three findings
+that follow.
+
+### Rails was declared for v1 and did not ship
+
+*v1 stacks* above names **Rails, Django, Express, FastAPI**. Three of those
+shipped; Rails did not, and it sits under `discovery.md`'s *Not yet supported*
+alongside Laravel and Go. The reason is that section's own gating rule at the
+head of this file: Rails has no toolchain on this machine, so its implicit
+routing, its auth convention and its HTML-only case could only have been written
+out of documentation — which is exactly the failure that rule exists to prevent,
+and which the three shipped sections each caught in their *obvious* method.
+Next.js App Router shipped in its place, on one real app, and says so.
+
+### The routes are not the app
+
+FlatBooks has 18 files under `src/app/api/**/route.ts`. Sorted by what an
+assistant could use:
+
+| What they are | How many |
+|---|---|
+| Webhooks, signature-verified (Stripe, PayPal, bank feed) | 5 |
+| Cron, gated by a shared `CRON_SECRET` | 3 |
+| Better Auth's own catch-all | 1 |
+| Session-gated flows that only make sense from the UI (bank connect, Stripe checkout/portal) | 6 |
+| **Actually useful to an assistant** | **3** |
+
+The three are `GET /api/exports/ledger` and `GET /api/exports/pack`, both
+returning files to a signed-in browser, and `POST /api/integrations/ingest`,
+which takes its own bearer key.
+
+Meanwhile the app's real work — create a client, create an invoice, send it,
+mark it paid, add a transaction, import a CSV, save settings — lives in **25
+exported Server Actions** across four files marked `'use server'`. Next.js
+compiles each into a build-time id, and the framework will list them:
+`.next/server/server-reference-manifest.json` holds 25 entries, each naming its
+source file and exported name — the same 25, counted from the other end.
+
+(**Re-measured while routing these findings into the reference files.** This
+paragraph first said 22, which is the count in `src/lib/data/actions.ts` alone;
+three more live in `src/lib/accountant/actions.ts`, `src/lib/i18n/actions.ts`
+and `src/app/(app)/admin/users/_actions.ts`. 25 is the number that matches the
+manifest, and 25 is what `discovery.md` uses.)
+
+**They are enumerable and they are not callable.** The id is a hash that changes
+when the build changes, and the calling convention — POST to a page URL with a
+`Next-Action` header — is internal protocol with no compatibility promise.
+Driving it is the same bargain `discovery.md` already refuses for HTML form
+posts: replaying an undocumented encoding that breaks silently the next time
+somebody rebuilds.
+
+So the honest capability list for FlatBooks is **two tools, against 25 Server
+Actions and three usable routes**, and that is the finding decision 1 most
+needed. An app can have an API, pass every no-API check, and still keep nine
+tenths of itself out of reach. Nothing in `discovery.md` today would say so: it
+asks *is there an API?* and FlatBooks answers yes.
+
+**Gap → `discovery.md`.** The Next.js section has to make the Server Action
+count part of the discovery report, next to the route count, and say plainly
+that those capabilities are unavailable to a server sitting beside the app. It
+is also the strongest argument Step 0 has, and Step 0 does not currently make
+it: *the good way would reach the twenty-five this cannot.*
+
+### Next.js does generate a route list, and the file tree lies about it
+
+The framework writes `.next/app-path-routes-manifest.json` — source path to URL,
+for every route — on a build, and it is there after `next dev` too. That is the
+Next.js answer to `manage.py shell` and `app.openapi()`, and it matters for the
+usual reason:
+
+```
+/(app)/invoices/page        -> /invoices
+/(auth)/login/page          -> /login
+/(app)/invoices/[id]/page   -> /invoices/[id]
+```
+
+**Route groups are stripped from the URL.** A path built from the file tree
+gives `/(app)/invoices`, which is a 404. FlatBooks has two of them, `(app)` and
+`(auth)`, wrapping **17** of its 49 app paths — `(app)` 13 and `(auth)` 4,
+re-counted from the manifest while routing these findings; this first said 20.
+So "a route is a file" is true only if you know which parts of the path are not
+part of the path.
+
+The manifest does not carry HTTP methods — those come from reading which of
+`GET`/`POST`/… each `route.ts` exports, the same way Django's `-` verbs column
+means *go and read the view*.
+
+**Gap → `discovery.md`**, in the same new section.
+
+### A route that exists answers `405`, not `404`
+
+Measured, with no credentials:
+
+```
+GET /api/integrations/ingest   405
+GET /api/banksync/sync         405
+GET /api/exports/ledger        307  -> /login
+GET /api/cron/remind           401  text/plain
+```
+
+`discovery.md`'s probe rule is *send one request to each route and keep the ones
+that answer*, and it never mentions 405. A 405 means the opposite of what
+dropping the route would imply: the route is there and the verb is wrong. The
+example given for a route to discard is a DRF format-suffix 500, which is a
+genuine casualty — so the rule as written invites someone to throw away every
+POST-only endpoint in the app, which on FlatBooks is most of them.
+
+**Gap → `discovery.md`'s *Then probe what you found* section.** Stack-neutral;
+it belongs above the per-stack parts.
+
+### Getting in — where the build actually stopped
+
+`credentials.md` opens with a check it calls measurable rather than a guess:
+send one unauthenticated request and read the `WWW-Authenticate` header, because
+the server names its own scheme there. Its first `Verify` item makes that
+mandatory.
+
+**FlatBooks emits no `WWW-Authenticate` header anywhere.** Zero occurrences
+across the 401 from `ingest`, the 401 from `cron`, and the 307 from `ledger`.
+Nothing in Next.js emits one and no hand-written route handler here does either.
+The scheme word had to be read out of the 401's body —
+`{"error":"Missing Authorization: Bearer <key>"}` — and confirmed in the source.
+
+Then the rule that actually stopped the build. `SKILL.md` Step 4 says to *create
+a login for the assistant, rather than borrowing a person's, wherever the app
+allows it*. On FlatBooks that path dead-ends, in the worst shape:
+
+```
+POST /api/auth/sign-up/email   200
+{"token":null,"user":{"name":"Agent Access","emailVerified":false,...}}
+```
+
+**HTTP 200, a complete-looking user object, `"token": null`, and no `Set-Cookie`
+at all** — the cookie jar came back empty, and the ledger with that jar still
+returned 307 to `/login`. Every check an operator would naturally run says the
+sign-up worked. There is no credential. Then:
+
+```
+POST /api/auth/sign-in/email   403
+{"message":"Email not verified","code":"EMAIL_NOT_VERIFIED"}
+```
+
+The account exists and cannot sign in until a verification email is delivered to
+a real inbox. `credentials.md`'s Django recipe mints a token from
+`manage.py shell` — a command-line path into the app's own data — and the
+dedicated-login rule quietly assumes every app has one. Most modern SaaS does
+not, and on those the rule produces an account that cannot be used. This is the
+same failure `credentials.md` already documents for Django's login form — *a 200
+from that POST is a failure, not a success* — arrived at from a different
+direction, on a stack with no section.
+
+And there is a second reason the rule would not have helped even if the sign-up
+had worked: **on a per-tenant app a fresh agent login sees nothing.**
+`/api/exports/ledger` reads `bankFeed(ctx.ownerId)`, scoped to the signed-in
+user, so a brand-new account has empty books. The dedicated identity that makes
+revocation clean also makes the agent useless.
+
+FlatBooks has its own answer, and it is a better one than either horn: an
+accountant invite grants read-only access to somebody else's books, and
+`resolveBooksContext` returns `canWrite: false` for it — enforced by the app,
+per-owner, revocable. **An existing app may already have a read-only delegate
+role, and where it does, using it beats both a fresh login and borrowing the
+owner's.** Nothing in the skill says to go looking for one.
+
+**Gaps → `credentials.md`**, three of them: a stated fallback for when no
+`WWW-Authenticate` header exists (and a softened `Verify` item, since today it
+demands something most apps do not emit); a section on token-less, verification-
+gated sign-up, with the 200-and-no-cookie shape written down; and a companion to
+the dedicated-login rule — look for the app's own delegate role first, and say
+what to do when creating an account is not possible.
+
+### `redirect: "error"` is wrong, and the default is worse
+
+`server.md`'s worked example sets `redirect: "error"` on its fetch. Against an
+app that bounces an unauthenticated request to a login page — which is most apps
+with sessions — all three modes were measured:
+
+```
+redirect:"error"    -> THREW TypeError: fetch failed | cause: unexpected redirect
+redirect:"manual"   -> returned 307 /login | res.ok = false
+redirect:"follow"   -> returned 200        | res.ok = true
+```
+
+`"error"` throws, so the handler's `if (!res.ok)` branch never runs and an
+expired session reaches the client as `TypeError: fetch failed` — a message
+naming the network, with auth nowhere in it.
+
+**`"follow"` is the one to write down, because it is the default.** Drop the
+option and an unauthenticated request returns **200, `res.ok` true**, carrying
+the login page. The tool then parses HTML as if it were data and hands the
+assistant a result with no error anywhere in the chain. That is the failure this
+whole skill keeps circling — a rejection that looks exactly like a success — and
+here it is reached by leaving one line out.
+
+The generated server uses `"manual"` plus an explicit 3xx branch, and the tool
+call returned the right thing:
+
+> The app redirected to /login instead of answering. That means the session
+> cookie in agent-access/.env is missing or expired.
+
+**Gap → `server.md`.** The worked example's `redirect: "error"` should become
+`"manual"` with a 3xx branch, and the three-way measurement above belongs beside
+it.
+
+### Two smaller shapes `server.md` has not met
+
+**Two tools, two credentials, two schemes.** The worked example carries one
+`APP_API_TOKEN`. FlatBooks needs a Better Auth session cookie for the read and
+an `fbk_` bearer key for the write, and no single credential reaches both. Not a
+defect — but the one-identity disclosure is written for one identity, and here
+there are two, revoked in two different places.
+
+**A list endpoint that returns CSV and has no `limit`.** `/api/exports/ledger`
+returns `text/csv` and every row on the account. `server.md` calls the cap
+applied to returned rows a second cap; here it is the **only** cap, because
+there is no parameter to send. The *copy fields out one at a time* rule still
+applies, to CSV columns rather than JSON keys.
+
+**Gap → `server.md`:** a short note on both, so neither is re-derived per app.
+
+### What the promise is worth: measured
+
+The central claim held, and it was checked rather than asserted.
+
+```
+$ git status --porcelain          # in H:\flatbooks, after the whole build
+?? agent-access/
+```
+
+One untracked folder. **Not one existing file modified**, and `.gitignore` was
+never touched — which was a constraint of this run, since there was no owner to
+ask. It was not needed:
+
+```
+$ git check-ignore -v agent-access/.env
+agent-access/.gitignore:1:.env	agent-access/.env
+```
+
+The nested `.gitignore` is honoured by the parent repository, so the credential
+is protected without editing a file the owner wrote. `SKILL.md` already says
+this; it is now measured.
+
+The folder was removed afterwards and `git status --porcelain` returned to
+empty.
+
+### What was verified, and what was not
+
+Verified, observed:
+
+- `npx tsc --noEmit` clean, under the `nodenext` config `server.md` specifies.
+- The server connected over stdio **from a working directory that was not the
+  folder** (`cwd: C:/`), which is the case the absolute-path `.env` loading
+  exists for.
+- Both tools advertised, with the right annotations — `readOnlyHint: true` on
+  the read, `destructiveHint: false` on the write.
+- The schema cap enforced: `limit: 500` was rejected before the handler ran, with
+  `Too big: expected number to be <=50 at limit`.
+- One real HTTP call from a tool to the running app, answered, and logged:
+  `{"tool":"list_transactions","args":{"limit":5},"outcome":"error redirect_307"}`.
+- No credential in `calls.log`, no `console.log` in either source file, no spread
+  of a response into a result.
+
+**Not verified:** either tool against real data — and the two were blocked by
+different walls, so each is named separately.
+
+- **`list_transactions`** had no **session cookie**. Sign-up issued none and
+  sign-in was refused until an email was verified, as above.
+- **`ingest_transactions`** had no **`fbk_` connection key**. Those are minted by
+  `createConnectionTokenAction`, which is a Server Action — so the credential the
+  write tool needs is itself locked behind the same thing that put nine tenths of
+  the app out of reach. There is no HTTP endpoint that issues one, and no
+  command-line path to it.
+
+Inventing either would have been the hand-wave this skill spends a whole section
+forbidding.
+
+Two further limits on this run, both worth knowing. The server was driven over
+stdio by a script rather than registered with `claude mcp add`, so as not to
+write to the operator's own client configuration — it proves the same protocol
+exchange, but `server.md`'s registration line is still unrun outside its own
+fixture. And the run left one artefact it could not clear: an account created
+through FlatBooks' own sign-up API while the dev server ran against the
+project's `test` database branch — the one its own integration tests write to and
+clear down, rather than the branch holding the owner's books. Database access was
+unavailable in the session, so which branch the row landed in could not be
+confirmed, and FlatBooks exposes no delete-user endpoint to remove it through the
+app. It is a row, not a file; `git status` is clean either way. It is recorded
+here rather than left for somebody to find.
+
+### The one that surprised us
+
+Not the redirect, and not the missing header. It was that **FlatBooks passes
+every honesty check in `discovery.md` and still cannot be honestly served.** It
+has an API. The API returns JSON. Routes enumerate, probe, and answer. Every
+question the skill knows how to ask gets the reassuring answer — and the app
+still only offers two tools against 25 Server Actions and three usable routes,
+because the rest were written in a shape that has no web address at all.
+
+`discovery.md`'s rule is *never present a partial discovery as a complete one*.
+This run found the way to break that rule while following every instruction in
+it: report the routes truthfully, and let the owner infer that the routes are
+the app. On the stack where Step 0 has its strongest recommendation, the
+strongest argument for taking that recommendation is a number the skill does not
+currently count.
