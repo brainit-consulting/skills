@@ -272,19 +272,58 @@ is a real security regression in their app, arrived at by accident.
 expects, per-framework header names, and why exempting the route is the wrong
 answer.
 
-## Open, deliberately
+## v1 stacks
 
-- **Which stacks ship in v1.** Rails, Django, Express and FastAPI cover most of
-  what people have. Laravel and Go are plausible; each costs a discovery section.
-  A stack ships only when its *implicit* routing, its auth, and its no-API case
-  are all written down — a stack listed on the strength of a route grep is a
-  promise the skill cannot keep, and the user finds out at step 5.
-- **Whether the server is offered as a template to copy or generated per app.**
-  Generated fits the "your actual app from the first commit" principle; a
-  template is easier to keep correct. Leaning generated from a documented shape.
-- **What "verify" means concretely** for an app the skill did not build. It
-  cannot know the right answer to `list_orders`. Probably: the user confirms one
-  real call returns what they expect, and a write is checked in the app's own UI.
+**Rails, Django, Express, FastAPI.** Laravel and Go are the likely next two; each
+costs a discovery section and ships only when earned.
+
+A stack ships only when its *implicit* routing, its auth, and its no-API case are
+all written down. A stack listed on the strength of a route grep is a promise the
+skill cannot keep, and the user finds out at step 5 — which is the worst possible
+moment, because by then they have chosen this path over the better one.
+
+## Generated per app, from a documented shape
+
+Not a template copied in. The tools are named for that app's verbs, take that
+app's parameters, and return that app's shapes — the same principle
+`start-an-app` holds to, that the result is the user's actual app rather than a
+template they have to rewrite. A generic `call_endpoint(path, method, body)` tool
+is a template wearing a disguise: it pushes every decision onto the model at
+runtime and gives the user nothing to review.
+
+The cost is that `server.md` must be a **specification with worked examples**
+rather than a file to copy — the caps, the error handling, the logging, the tool
+shapes — precise enough that two runs of this skill produce servers that differ
+only where the apps differ.
+
+## What "verify" means here
+
+The skill did not build this app and cannot know the right answer to
+`list_orders`. So verification is a collaboration, and it is the user who
+confirms — but the skill does the work and never asks them to take anything on
+trust.
+
+**Reads.** One real call per tool, with the result shown as it came back, not
+summarised. The question is *"is this your data, and does it look complete?"* —
+that catches the two failures the skill cannot see for itself: pointing at the
+wrong environment, and a query returning a slice while claiming to be the whole.
+
+**Writes.** One real write, then two confirmations: the skill reads it back
+through a different tool, and the user finds it in the app's own interface. The
+second is not redundant. It is the only check that the write went through the
+app's own rules rather than round them, and it is the one that catches a
+successful-looking call the app itself does not consider valid.
+
+**Undo what you wrote.** A verification write is a real row in a real system. Say
+what it will create before creating it, use something obviously disposable, and
+remove it afterwards — through the app, so the removal is as legitimate as the
+write.
+
+**When a real call is impossible** — no dev server on this machine, no
+credentials, an empty database — the tools are reported **unverified**, with what
+was missing named. Never "this should work". A tool that has never been run is
+not a working tool, and saying so is the difference between a hand-off and a
+hand-wave.
 
 ## Validating it
 
