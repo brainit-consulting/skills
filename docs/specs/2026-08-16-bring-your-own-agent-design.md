@@ -443,11 +443,17 @@ returning files to a signed-in browser, and `POST /api/integrations/ingest`,
 which takes its own bearer key.
 
 Meanwhile the app's real work — create a client, create an invoice, send it,
-mark it paid, add a transaction, import a CSV, save settings — lives in **22
+mark it paid, add a transaction, import a CSV, save settings — lives in **25
 exported Server Actions** across four files marked `'use server'`. Next.js
 compiles each into a build-time id, and the framework will list them:
 `.next/server/server-reference-manifest.json` holds 25 entries, each naming its
-source file and exported name.
+source file and exported name — the same 25, counted from the other end.
+
+(**Re-measured while routing these findings into the reference files.** This
+paragraph first said 22, which is the count in `src/lib/data/actions.ts` alone;
+three more live in `src/lib/accountant/actions.ts`, `src/lib/i18n/actions.ts`
+and `src/app/(app)/admin/users/_actions.ts`. 25 is the number that matches the
+manifest, and 25 is what `discovery.md` uses.)
 
 **They are enumerable and they are not callable.** The id is a hash that changes
 when the build changes, and the calling convention — POST to a page URL with a
@@ -456,8 +462,8 @@ Driving it is the same bargain `discovery.md` already refuses for HTML form
 posts: replaying an undocumented encoding that breaks silently the next time
 somebody rebuilds.
 
-So the honest capability list for FlatBooks is **two tools out of roughly
-twenty-four things the app can do**, and that is the finding decision 1 most
+So the honest capability list for FlatBooks is **two tools, against 25 Server
+Actions and three usable routes**, and that is the finding decision 1 most
 needed. An app can have an API, pass every no-API check, and still keep nine
 tenths of itself out of reach. Nothing in `discovery.md` today would say so: it
 asks *is there an API?* and FlatBooks answers yes.
@@ -466,7 +472,7 @@ asks *is there an API?* and FlatBooks answers yes.
 count part of the discovery report, next to the route count, and say plainly
 that those capabilities are unavailable to a server sitting beside the app. It
 is also the strongest argument Step 0 has, and Step 0 does not currently make
-it: *the good way would reach the other twenty-two.*
+it: *the good way would reach the twenty-five this cannot.*
 
 ### Next.js does generate a route list, and the file tree lies about it
 
@@ -483,8 +489,10 @@ usual reason:
 
 **Route groups are stripped from the URL.** A path built from the file tree
 gives `/(app)/invoices`, which is a 404. FlatBooks has two of them, `(app)` and
-`(auth)`, wrapping 20 of its 49 app paths. So "a route is a file" is true only
-if you know which parts of the path are not part of the path.
+`(auth)`, wrapping **17** of its 49 app paths — `(app)` 13 and `(auth)` 4,
+re-counted from the manifest while routing these findings; this first said 20.
+So "a route is a file" is true only if you know which parts of the path are not
+part of the path.
 
 The manifest does not carry HTTP methods — those come from reading which of
 `GET`/`POST`/… each `route.ts` exports, the same way Django's `-` verbs column
@@ -698,8 +706,8 @@ Not the redirect, and not the missing header. It was that **FlatBooks passes
 every honesty check in `discovery.md` and still cannot be honestly served.** It
 has an API. The API returns JSON. Routes enumerate, probe, and answer. Every
 question the skill knows how to ask gets the reassuring answer — and the app
-still only offers two of its twenty-four capabilities, because the rest were
-written in a shape that has no web address at all.
+still only offers two tools against 25 Server Actions and three usable routes,
+because the rest were written in a shape that has no web address at all.
 
 `discovery.md`'s rule is *never present a partial discovery as a complete one*.
 This run found the way to break that rule while following every instruction in

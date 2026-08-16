@@ -122,19 +122,28 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
 }
 
 /**
- * A 3xx is not an answer, and `res.ok` is false for one - so without this the
- * redirect is reported as "HTTP 302" alongside a body that is empty, and the
- * reader is told nothing about why. An app that bounces to a login page is
- * saying the credential is missing or expired; say that instead.
- * Returns the message when the response is a redirect, null otherwise.
+ * A 3xx is not an answer *on this app*, and that qualification is the whole
+ * rule. django_api serves JSON and never redirects on a URL that is right, so
+ * a redirect here means the credential or the URL is wrong, and `res.ok` is
+ * false - which without this branch reports "HTTP 302" over an empty body and
+ * tells the reader nothing about why.
+ *
+ * On an app where a successful form POST is itself a 302 - the session-cookie
+ * variant below, measured - this function is exactly backwards and that
+ * handler must branch the other way. Which app you have is something discovery
+ * measured; decide it before writing the handler, not after.
+ *
+ * Returns the message when the response is a redirect away, null otherwise. A
+ * 304 is in the 3xx range, carries no Location, and is not a redirect at all.
  */
 function redirectedAway(res: Response): string | null {
-  if (res.status < 300 || res.status >= 400) return null;
+  const location = res.headers.get("location");
+  if (res.status < 300 || res.status >= 400 || !location) return null;
   return (
-    `The app redirected to ${res.headers.get("location") ?? "another page"} ` +
-    `instead of answering. That usually means the credential in agent-access/.env ` +
-    `is missing or expired, so the app is asking whoever sent this to log in. ` +
-    `It can also mean the URL is one character out - check the trailing slash.`
+    `The app redirected to ${location} instead of answering. That usually means ` +
+    `the credential in agent-access/.env is missing or expired, so the app is ` +
+    `asking whoever sent this to log in. It can also mean the URL is one ` +
+    `character out - check the trailing slash.`
   );
 }
 
@@ -663,6 +672,65 @@ Log the redirect as its own outcome (`error redirect_302`), not as `http_302`.
 When somebody reads `calls.log` weeks later, the difference between "the app
 said no" and "the app asked us to log in" is the whole diagnosis.
 
+#### The exception, and it is in this file already
+
+**`redirect: "manual"` is unconditional. Treating every 3xx as a failure is
+not.** On a session-authenticated app a successful form POST *is* a 302 — the
+[session-cookie variant](#variant-writing-through-a-session-cookie-and-csrf)
+below says so, and it is right. Write the 3xx branch there the way the worked
+example above writes it and the generated tool reports a **write that
+committed** as a missing credential.
+
+Measured on `django_html`, the same fixture as the three-way above, with a valid
+session and CSRF token — the write that this file's own variant sends:
+
+```
+$ node django-write.mjs
+login POST            -> 302  /accounts/profile/
+write, valid          -> 302  location /invoices/6/  res.ok false
+  rule as committed   -> ERROR: The app redirected instead of answering.
+                                The credential is missing or expired.
+write, invalid        -> 500
+write, no credential  -> 403
+```
+
+Invoice **6 exists**. The row was created, the app said so in the `Location`
+header, and a handler applying the rule above without thinking reports the one
+thing that did not happen.
+
+**And the same status means both things on one app**, which is why no rule can
+decide this from the number alone:
+
+```
+$ node two-meanings.mjs
+GET  /invoices/     no credential  -> 302  location /login/?next=/invoices/     <- rejection
+POST /invoices/new/ valid write    -> 302  location /invoices/6/               <- success
+POST /login/        wrong password -> 200  res.ok true  says-incorrect true    <- failure
+POST /invoices/new/ no credential  -> 403                                      <- failure
+```
+
+Four lines, two of them 302, meaning opposite things — and the 200 in the third
+line is a failure, which is the mirror image of the same problem and is already
+documented in `credentials.md`.
+
+**So the rule has two halves, and only the first is unconditional:**
+
+1. **Always `redirect: "manual"`.** Never `"error"`, never the default. This
+   half has no exceptions: you cannot decide what a 3xx means if the fetch
+   throws on it or silently follows it.
+2. **Then branch on what a 3xx means for *that request on that app*** — which
+   `discovery.md` measured and `credentials.md` proved, before this file was
+   opened. A JSON API that redirects is refusing you. A Django form POST that
+   redirects has done the work. Write down which one you have, in the handler's
+   own comment, so the next reader does not have to re-derive it.
+
+On the fixture above the two are cleanly separable and it is worth saying why:
+the successful write's 302 carries `Location: /invoices/6/`, a page of the app,
+while the rejection's carries `Location: /login/?next=…`. Where a `Location`
+pointing at a login page is the only rejection shape an app has, that is a
+sounder test than the status — but it is a test about *this* app's login URL,
+so it belongs in the generated comment, not in a rule you carry across.
+
 ### Use the URL discovery proved, character for character
 
 The trailing slash is not cosmetic, and on a write it is not even a redirect. Measured on `django_api`:
@@ -719,6 +787,8 @@ async function write(path: string, form: Record<string, string>) {
 Three things about it that cost an hour each, all from `credentials.md`:
 
 - **A 200 from a form POST is a failure.** Django re-renders the form with validation errors inside a 200. Check for the 302, which is why `redirect: "manual"` is there — following it turns the evidence of success into the page you land on.
+
+  **This is the exception to *A redirect is not an answer* above, and the two must be read together.** There, a 3xx means the credential is missing and the handler reports an error; here, a 3xx means the write landed. Measured on `django_html`: a valid write answers `302 Location: /invoices/6/` and the row is there, while an unauthenticated *read* of the same app answers `302 Location: /login/?next=…`. **Same app, same status, opposite meanings** — so a generated handler that copies the worked example's `redirectedAway` branch into this variant reports a successful write as a failed login. Copy the mode, decide the branch.
 - **Cookie and header must both be present.** One is no better than neither, and the 403's reason line is the only thing that says which is missing.
 - **Never exempt a route from CSRF to make this work.** It is a real security regression in somebody else's app, arrived at by accident, and it outlives the demo.
 
@@ -1006,7 +1076,8 @@ Six things must be in it, and the last is the one that gets dropped:
 - [ ] The tool names are this app's verbs. There is no `call_endpoint`, `query`, `request` or other generic pass-through tool.
 - [ ] Every tool's URL is one that `discovery.md` probed and got a 200 from, character for character, trailing slash included. A slashless write was not assumed to redirect.
 - [ ] Every `fetch` sets `redirect: "manual"`. `grep -n "redirect:" tools.ts` returns nothing else — no `"error"`, and no fetch with the option missing, which is the same as `"follow"`.
-- [ ] Every handler checks for a 3xx **before** it checks `res.ok`, and the message it returns names the credential rather than the status. The failure was actually produced — the credential removed or expired, the tool called, and the message read.
+- [ ] Every handler checks for a 3xx **before** it checks `res.ok` — **except where a 3xx is this app's own success signal**, as in the session-cookie variant, where a 302 means the write landed and a 200 means it did not. Which one this app is was read off what discovery measured, and the handler says so in a comment. On a session-authenticated Django write, a tool reporting `error redirect_302` on a row that was created is this check failing.
+- [ ] The message the 3xx branch returns names the credential rather than the status. The failure was actually produced — the credential removed or expired, the tool called, and the message read.
 - [ ] A redirect is logged as its own outcome (`error redirect_302`), distinguishable in `calls.log` from an ordinary `http_302`.
 - [ ] Where the tools need more than one credential: each has its own environment variable named for what it reaches, each is checked separately at start-up, and the README gives the revocation command for **every** one of them.
 - [ ] Where a list endpoint takes no limit parameter: the tool does not send one, its comment says the app returns everything, and the log line records both numbers.
