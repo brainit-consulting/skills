@@ -6,7 +6,9 @@ Last verified: 2026-08-16
 
 `discovery.md` names the mechanism. This file obtains it, sends it, and tests it. Everything below was run against live apps and live databases; every block of output is pasted from a terminal.
 
-> **Shell:** the commands assume a POSIX shell — single-quoted `curl -w` format strings and heredocs. On Windows run them in Git Bash or WSL rather than PowerShell.
+> **Shell:** the commands assume a POSIX shell — single-quoted `curl -w` format strings and heredocs. On Windows run them in Git Bash or WSL rather than PowerShell. One command uses `grep -oP`, which needs GNU grep; a portable `sed` alternative is given beside it for macOS.
+
+**Where the credential is kept** is `references/server.md`'s job, not this file's: it belongs in the generated folder's own environment, never committed, never returned from a tool and never logged. Get it working here first — an unproven credential in a config file is a debugging session waiting to happen — then hand it over.
 
 ---
 
@@ -86,6 +88,8 @@ HTTP/1.1 201 Created
 ```
 
 Same framework, same CSRF middleware installed, no CSRF anything required. That is the whole argument for using the token path where one exists.
+
+(This particular endpoint echoes the payload back rather than persisting it, so the 201 is not evidence of a stored row — unlike the `django_html` example above, where the invoice was confirmed on the list page afterwards. It does not need to be: CSRF is enforced by middleware, before the view body runs, so a request that reached the view at all is the thing being proved.)
 
 ---
 
@@ -171,7 +175,7 @@ print('token:', t.key)
 "
 ```
 
-`get_or_create` returns the existing token if one is already there. DRF's default model stores **one token per user** — the `user` field is a `OneToOneField`, and creating a second raises `IntegrityError: duplicate key value violates unique constraint "authtoken_token_user_id_key"`. So this is safe to run twice, and there is no way to issue the agent a second key alongside a person's existing one on the same account. To rotate, delete the row and create it again, and expect the old key to stop working immediately — which is the strongest argument for a dedicated `agent` user: rotating or revoking it does not log a real person out of their own integration.
+`get_or_create` returns the existing token if one is already there. DRF's default model stores **one token per user** — the `user` field is a `OneToOneField`, so the column is declared `user_id integer NOT NULL UNIQUE` and creating a second token raises `IntegrityError`. The message is the database's, not Django's, so it reads differently depending on the engine — `duplicate key value violates unique constraint "authtoken_token_user_id_key"` on Postgres, `UNIQUE constraint failed: authtoken_token.user_id` on SQLite. Match on the constraint, not on the sentence. So this is safe to run twice, and there is no way to issue the agent a second key alongside a person's existing one on the same account. To rotate, delete the row and create it again, and expect the old key to stop working immediately — which is the strongest argument for a dedicated `agent` user: rotating or revoking it does not log a real person out of their own integration.
 
 **Send it as:**
 
@@ -202,6 +206,13 @@ CSRF=$(curl -s -c jar.txt http://<host>/login/ \
 curl -s -b jar.txt -c jar.txt -o /dev/null -w '%{http_code} %{redirect_url}\n' \
      -d "username=<user>&password=<pass>&csrfmiddlewaretoken=$CSRF" \
      -e http://<host>/login/ http://<host>/login/
+```
+
+`grep -oP` needs GNU grep built with PCRE. It is there in Git Bash and on most Linux distributions, and **macOS's BSD `grep` has no `-P` at all** — it exits with `grep: invalid option -- P` and `$CSRF` is silently empty, so the login then returns 200 and reads as a wrong password. This `sed` does the same job everywhere, and was checked against the same page to return the identical token:
+
+```bash
+CSRF=$(curl -s -c jar.txt http://<host>/login/ \
+       | sed -n 's/.*name="csrfmiddlewaretoken" value="\([^"]*\)".*/\1/p')
 ```
 
 Observed: `302 http://127.0.0.1:8002/accounts/profile/`, and the jar then holds both cookies:
@@ -328,7 +339,7 @@ $ curl -s -X POST -H "Content-Type: application/json" \
 Authorization: Bearer <access_token>
 ```
 
-Use the `access_token` value from the response, not the whole JSON object, and note `token_type` is `"bearer"` lower-case in the body while the header word is conventionally `Bearer` — the header is matched case-insensitively by FastAPI, but do not copy the body value into the header and hope.
+Use the `access_token` value from the response, not the whole JSON object. The response also carries `token_type: "bearer"`, which is the scheme word to use — the casing of it does not matter, as above.
 
 **How to test it:**
 
@@ -369,13 +380,50 @@ The fallback reads SQL directly. That must be enforced by the database, not by t
     CREATE USER 'agent_readonly'@'%' IDENTIFIED BY '<generated>';
     GRANT SELECT ON <db>.* TO 'agent_readonly'@'%';
 
-**Prove it, do not assume it.** Connect as that user and attempt a write:
+**Prove it, do not assume it.** Connect as that user and attempt a write. **The statement differs by engine** — see below for why that matters more than it looks:
 
+    -- Postgres and SQLite
     INSERT INTO <any table> DEFAULT VALUES;
+
+    -- MySQL, which has no DEFAULT VALUES
+    INSERT INTO <any table> () VALUES ();
 
 Expected: a permission error. **If that INSERT succeeds, stop.** The fallback is not safe to enable; use API-only reads and tell the user why.
 
-Both blocks above were run against a real Postgres 18.6 and MySQL 8.4.11 holding a real Django schema, and the refusals are real:
+### A syntax error is not a refusal
+
+This is the one place where the safety gate can pass without testing anything, so it gets its own heading.
+
+`DEFAULT VALUES` is standard SQL that Postgres and SQLite accept and **MySQL does not**. Run it there and you get an error, which is what you were told to expect — but it is the wrong kind of error, and the same error arrives no matter who you are. Measured, on MySQL 8.4.11:
+
+```
+as agent_readonly:  INSERT INTO django_session DEFAULT VALUES;
+  ERROR 1064 (42000): You have an error in your SQL syntax; ... near 'DEFAULT VALUES' at line 1
+
+as root, with every privilege:  INSERT INTO django_session DEFAULT VALUES;
+  ERROR 1064 (42000): You have an error in your SQL syntax; ... near 'DEFAULT VALUES' at line 1
+```
+
+Identical. The statement never reached the permission check, so the account it ran as made no difference. A tester who sees `ERROR`, ticks the box and enables the fallback has proved nothing — and the case where that matters is exactly the case the test exists for, a mistyped or over-broad `GRANT` that leaves the account able to write.
+
+**So read which error, and cross-check it against an admin.** Two measurable rules:
+
+1. **The refusal must name a permission.** `permission denied for table …` on Postgres, `INSERT command denied to user …` on MySQL. Any other error — syntax, a missing table, a constraint — means the test did not reach the permission check.
+2. **Run the identical statement as an admin user. The two errors must differ.** If the admin gets the same error, the statement is broken, not the account.
+
+Note that the admin will very often get an error too, which is why rule 1 comes first. With the corrected MySQL statement:
+
+```
+as agent_readonly:  INSERT INTO django_session () VALUES ();
+  ERROR 1142 (42000): INSERT command denied to user 'agent_readonly'@'127.0.0.1' for table 'django_session'
+
+as root:            INSERT INTO django_session () VALUES ();
+  ERROR 1364 (HY000): Field 'session_key' doesn't have a default value
+```
+
+Both fail; only one names a permission. That is the test passing. Postgres behaves the same way — `permission denied for table django_session` as `agent_readonly` against `null value in column "session_key" ... violates not-null constraint` as the superuser. **"It returned an error" is not the result. "It returned a permission error, and the admin did not" is.**
+
+Both grant blocks above were run against a real Postgres 18.6 and MySQL 8.4.11 holding a real Django schema, and the refusals are real:
 
 ```
 postgres=> SELECT current_user;
@@ -569,7 +617,9 @@ Say both at the point the choice is made, not once the thing is built. Neither i
 - [ ] Express: the guard middleware was read for the exact header name, and the credential was tested against **every** route, not just one.
 - [ ] FastAPI: the token request was sent **form-encoded**. A 422 naming `username` and `password` as missing was read as wrong encoding, not wrong credentials.
 - [ ] A dedicated account was created for the agent where the app allows it, rather than reusing a person's login.
-- [ ] Database fallback: `agent_readonly` was created, connected as, and an `INSERT` attempted. The real permission error was seen. `UPDATE` and `DELETE` were attempted too.
+- [ ] Database fallback: `agent_readonly` was created, connected as, and an `INSERT` attempted — the statement for **that engine** (`DEFAULT VALUES` is a syntax error on MySQL). `UPDATE` and `DELETE` were attempted too.
+- [ ] The refusal **named a permission** — `permission denied for table …` / `INSERT command denied to user …` — rather than being any error at all. A syntax or constraint error was not counted as a pass.
+- [ ] The identical statement was run as an **admin** user and produced a **different** error. Identical errors mean the statement never reached the permission check and the test proved nothing.
 - [ ] Postgres: the grants were run as the **same role the app's migrations run as**, or a plan exists to re-run `GRANT SELECT ON ALL TABLES` after deployments that add tables.
 - [ ] Postgres: every schema the app uses was granted, not `public` alone.
 - [ ] SQLite: no read-only user was claimed. `mode=ro` / `immutable=1` / `query_only` were not presented as an enforced boundary, and the owner was told the file permissions are doing the work — or the fallback was declined in favour of API-only reads.
