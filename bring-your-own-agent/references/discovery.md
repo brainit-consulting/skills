@@ -6,6 +6,8 @@ Last verified: 2026-08-16
 
 Everything here was run against real apps. Every block of output below is pasted from a terminal, not paraphrased.
 
+> **Shell:** the commands assume a POSIX shell — `test -f`, `grep -E`, and single-quoted `curl -w` format strings. On Windows run them in Git Bash or WSL rather than PowerShell. The one long exception is Django's `manage.py shell -c` block below, which was confirmed to run unchanged in PowerShell 7.
+
 ## Ask the framework, do not guess
 
 Every stack here generates routes that appear in no source file.
@@ -27,7 +29,7 @@ Enumerating is half the job. The framework tells you what it *registered*, not w
   |---|---|---|---|
   | `/api/orders/` (with slash) | **200** | 307 redirect | — |
   | `/api/orders` (no slash) | 301 redirect | **200** | — |
-  | `/users` / `/users/` | — | — | **200** both |
+  | `/users` / `/users/` | — | — | **200** both (with the key; 401 both without) |
 
   A client that does not follow redirects sees a 301 or a 307 and reports failure. A client that *does* follow them may drop the body on the way, so a POST silently becomes a GET.
 
@@ -128,6 +130,14 @@ Then read `ROOT_URLCONF` (named in `settings.py`) and expand by rule. Verified a
 grep -n "rest_framework" <project>/settings.py
 ```
 
+**Find `settings.py` rather than guessing at it.** On an unfamiliar app the project package is not the repo name and there may be several `settings*.py` files. `manage.py` names the real one:
+
+```bash
+grep -n "DJANGO_SETTINGS_MODULE" manage.py
+```
+
+Observed on the fixture: `os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'django_shop.settings')` — so the file is `django_shop/settings.py`. Dots are directories; the last segment is the filename.
+
 `django_shop` matches (`'rest_framework'` is in `INSTALLED_APPS`); `django_html` returns nothing. No DRF, no Ninja, no Tastypie in `INSTALLED_APPS` and no view returning `JsonResponse` means the app renders templates, which is the no-API case below.
 
 With the app running, the decisive check is the response's content type — ask for JSON and see what comes back:
@@ -170,7 +180,7 @@ Observed: `4.16.4`.
 2. Each mounted router file for its `router.get/post/put/delete` calls, which supply the leaves.
 
 ```bash
-grep -rn "app.use\|router\.\(get\|post\|put\|patch\|delete\)" app.js routes/
+grep -rEn "\.(get|post|put|patch|delete|all|use|route)\(" app.js routes/
 ```
 
 Real output from `express-shop`:
@@ -181,17 +191,43 @@ app.js:17:app.use(express.json());
 app.js:18:app.use(express.urlencoded({ extended: false }));
 app.js:19:app.use(cookieParser());
 app.js:20:app.use(express.static(path.join(__dirname, 'public')));
+app.js:25:  if (req.get('X-API-Key') !== API_KEY) {
 app.js:31:app.use('/', indexRouter);
 app.js:32:app.use('/users', requireApiKey, usersRouter);
 app.js:35:app.use(function(req, res, next) {
 app.js:40:app.use(function(err, req, res, next) {
+app.js:43:  res.locals.error = req.app.get('env') === 'development' ? err : {};
 routes/index.js:5:router.get('/', function(req, res, next) {
 routes/users.js:5:router.get('/', function(req, res, next) {
 ```
 
-Eleven lines, of which **two** are mounts. The rule that separates them: a mount is an `app.use` whose **first argument is a path string**. `app.use(logger('dev'))` and `app.use(function(req, res, next) {...})` take a function first and are middleware — they run on everything and route nothing. Lines 31 and 32 take `'/'` and `'/users'`.
+Thirteen lines, of which **two** are mounts and **two** are routes. Sorting them out:
+
+- **A mount is an `app.use` whose first argument is a path string.** Lines 31 and 32 take `'/'` and `'/users'`. Lines 16–20, 35 and 40 take a function first and are middleware — they run on everything and route nothing.
+- **Lines 25 and 43 are neither.** `req.get('X-API-Key')` and `req.app.get('env')` are Express's *header* and *setting* accessors, which share the name `get` with the routing verb. The pattern over-matches on purpose; see below.
 
 Concatenate mount and leaf: `GET /` and `GET /users`. Both confirmed live — 200 and 200.
+
+**Why the pattern is that wide, and why the obvious narrower one is dangerous.** The natural first attempt is to look for `app.use` and `router.get`. Both halves of that are wrong:
+
+- **Routes are commonly registered straight on the app object.** `app.get('/health', …)`, `app.post('/webhooks/stripe', …)`, `app.all(…)` and `app.route('/legacy').get(…).delete(…)` are ordinary Express and match no pattern built around `router.`.
+- **`router` is a convention, not a rule.** Nothing requires the variable to be called that. `const api = express.Router(); api.get('/things', …)` is just as valid, and `api.get` matches nothing anchored to the word `router`.
+
+Measured, against a scratch file registering six routes in those shapes plus one `app.use('/api', api)` mount, the narrow pattern returned **only the two `app.use` lines — zero routes**. Against two lines of an ordinary JSON API —
+
+```js
+app.get('/orders', (req, res) => res.status(200).json(orders));
+app.post('/orders', (req, res) => res.status(201).json(created));
+```
+
+— it returned **nothing at all**, so the app would have been reported as having no routes. The wide pattern finds all six in the first case and both in the second.
+
+That asymmetry is the whole point: **an over-match is a line you read and discard in two seconds; an under-match is an endpoint the owner never learns exists.** `req.get` in the output above costs nothing. So widen first and prune by eye, never the reverse.
+
+Two gaps the pattern still has, both of which the eye closes:
+
+- **`app.route('/path')` chains give up the path but not the verbs** when the `.get(…)` / `.delete(…)` links sit on their own continuation lines. The pattern flags the `app.route(` line; read the lines under it for the verbs.
+- **A path built from a variable** (`app.get(BASE + '/things', …)`) shows up as a route with no readable URL. Read the variable.
 
 **Why not introspect the router stack.** `app._router.stack` does exist and can be walked, but three things observed on this fixture rule it out as the primary method:
 
@@ -199,30 +235,44 @@ Concatenate mount and leaf: `GET /` and `GET /users`. Both confirmed live — 20
 - **Mount paths are stored only as compiled regexes**, so you rebuild the URL by un-escaping one. The layer for `/users` holds `^\/users\/?(?=\/|$)`; the layer for `/` holds `^\/?(?=\/|$)`. An un-escaping attempt written for this file produced `/?(?=/|$)/` as the app root — wrong, and wrong in a way that still looks like a route, so nothing downstream flags it.
 - **Most of the stack is not routes.** The fixture's stack has twelve entries and only **two** are mounted routers. The rest are `query`, `expressInit`, `logger`, `jsonParser`, `urlencodedParser`, `cookieParser`, `serveStatic`, the `requireApiKey` guard, and two anonymous error handlers.
 
-Introspection earns its place as a **cross-check** when the files are ambiguous — routers mounted in a loop, paths built from variables. Then walk `app._router.stack`, pin the Express major version first, and treat the result as a second opinion rather than the answer. Note that `require('./app')` on an express-generator layout does not bind a port: `app.js` exports the app and `bin/www` calls `listen`. So you can introspect without starting a server.
+Introspection earns its place as a **cross-check** when the files leave something genuinely unresolved — routers mounted in a loop, paths built from variables, or an `app.route()` chain whose verbs you want confirmed rather than read off. Then walk `app._router.stack`, pin the Express major version first, and treat the result as a second opinion rather than the answer. Note that `require('./app')` on an express-generator layout does not bind a port: `app.js` exports the app and `bin/www` calls `listen`. So you can introspect without starting a server.
 
 **Fallback when it will not boot:** reading the files *is* the method, so a broken app costs you nothing here — which is Express's one real advantage over the other two. What it costs you is the probe. Without a running server you cannot confirm the routes answer, so the list is **inferred** and must be announced as inferred, exactly like the Django and FastAPI fallbacks.
 
 **Is there an API at all?** Routes are not an API, and Express is where that bites, because nothing in the framework distinguishes the two. Grep for what the handlers return:
 
 ```bash
-grep -rn "res.json\|res.send\|res.render" app.js routes/
+grep -rEn "\.(json|send|sendStatus|render)\(" app.js routes/
 ```
 
 Real output from `express-shop`:
 
 ```
+app.js:17:app.use(express.json());
+app.js:26:    return res.status(401).json({ error: 'missing or invalid X-API-Key' });
 app.js:47:  res.render('error');
 routes/index.js:6:  res.render('index', { title: 'Express' });
 routes/users.js:6:  res.send('respond with a resource');
 ```
 
-`res.json` appears **nowhere**. Confirmed against the running app: both routes answer `200` with `Content-Type: text/html; charset=utf-8`, even when asked for `application/json`. So this app has two working routes and no JSON API — the no-API case below, arrived at from a completely different direction from Django's.
+**Match `.json(`, never `res.json`.** A chained status call — `res.status(200).json(orders)`, one of the commonest ways to write an Express handler — does not contain the string `res.json`. Measured: against the two lines
 
-Two traps in that check:
+```js
+app.get('/orders', (req, res) => res.status(200).json(orders));
+app.post('/orders', (req, res) => res.status(201).json(created));
+```
 
-- **`app.use(express.json())` is not evidence of an API.** It parses *incoming* request bodies and says nothing about what goes out. The fixture has it on line 17 and returns HTML from every route.
+a `res.json` grep returns **no matches**, and the rule below then reads "no JSON responses, therefore no API" for an app that is nothing but a JSON API. The owner is routed to "reads work, writes are impossible" for an app whose writes are fine — the exact misclassification the no-API rule exists to prevent, produced by the check meant to prevent it. No fixture will catch this for you: `express-shop` contains not one `app.get`, and a `res.json` grep hides even the fixture's own `res.status(401).json(...)` on `app.js:26`. Both Express patterns here had to be checked against files written specifically to break them.
+
+Reading the corrected output: three of the five lines are `render` or `send` returning HTML and plain text; line 17 is middleware, not a response; line 26 is a genuine JSON body, but it is the **401 from the guard**, not a route's payload. So neither of the two routes returns JSON. Confirmed against the running app: both answer `200` with `Content-Type: text/html; charset=utf-8`, even when asked for `application/json`. This app has two working routes and no JSON API — the no-API case below, arrived at from a completely different direction from Django's.
+
+Three traps in that check, each visible in the output above:
+
+- **`app.use(express.json())` is not evidence of an API.** It parses *incoming* request bodies and says nothing about what goes out. That is line 17, and this app returns HTML from every route.
+- **A JSON error body is not a JSON API.** Line 26 is real JSON, and it tells you only that a guard exists. Count a line as evidence of an API only when it is the response of a route you enumerated.
 - **`res.send` is content-negotiated by argument type.** `res.send('a string')` sets `text/html`; `res.send({...})` sets `application/json`. Reading the call is not enough — check what the argument is, or just probe the route.
+
+Which is why the grep is only ever the first pass. The check that settles it is the content type of a real response, measured.
 
 **Auth shape:** in Express, auth is a middleware function, and **it can guard part of an app and not the rest**. The fixture's mounts show it plainly:
 
@@ -279,15 +329,19 @@ for r in app.routes:
 — fails on current versions, and fails in the worst possible way. On FastAPI 0.141.1 with Starlette 1.6.0, `include_router` leaves an `_IncludedRouter` object in `app.routes` rather than flattening the router's routes into it, and that object has no `.path`:
 
 ```
-['GET', 'HEAD'] /openapi.json
-['GET', 'HEAD'] /docs
-['GET', 'HEAD'] /docs/oauth2-redirect
-['GET', 'HEAD'] /redoc
-['POST'] /token
+{'HEAD', 'GET'} /openapi.json
+{'HEAD', 'GET'} /docs
+{'HEAD', 'GET'} /docs/oauth2-redirect
+{'HEAD', 'GET'} /redoc
+{'POST'} /token
 Traceback (most recent call last):
-  ...
+  File "<string>", line 4, in <module>
+    print(getattr(r, 'methods', None), r.path)
+                                       ^^^^^^
 AttributeError: '_IncludedRouter' object has no attribute 'path'
 ```
+
+(`.methods` is a **set**, so the two verbs print in either order from run to run. Run it without `python -u` and the traceback may appear above the routes rather than below, because stderr is unbuffered and stdout is not.)
 
 It printed four documentation routes and one login endpoint, reported **none** of the app's three actual endpoints, and then crashed. Wrap that loop in a `try` — as a tidy-looking script would — and you get a clean list of five routes with no API in it. `app.openapi()` is a supported public method and returns the flattened table.
 
@@ -308,7 +362,34 @@ Worth knowing before you rely on it: on this fixture `/openapi.json` returns **2
 
 **Fallback when it will not boot:** `from main import app` executes the module, so a missing dependency, a database connection at import time or an absent environment variable stops it with a traceback. Then read the source and expand by rule: every `APIRouter(prefix=...)` prefixes every decorated path in that file, and `include_router(router, prefix=...)` adds a **further** prefix on top of the router's own. Both places must be checked — the prefix can live at either end, and an app that sets it in both concatenates them. An empty decorator path (`@router.get("")`) means the prefix itself is the route. Announce the list as **inferred** and probe it before promising it, since a prefix missed at either end makes every URL in the list a 404.
 
-**Is there an API at all?** For FastAPI the question barely arises — it is a JSON framework, and every route in the schema returns JSON unless it declares an HTML `response_class` or the app mounts a template engine (`Jinja2Templates`). Check for those two before assuming; if neither appears, the enumerated routes are the API.
+**Is there an API at all?** For FastAPI the question barely arises — it is a JSON framework — but do not skip the check, because a FastAPI app can serve HTML through `HTMLResponse`, a `response_class`, or a mounted template engine. Make the schema answer it: it declares the content type of every response.
+
+```bash
+python -c "
+from main import app
+for path, ops in app.openapi()['paths'].items():
+    for method, op in ops.items():
+        content = op.get('responses', {}).get('200', {}).get('content', {})
+        print(method.upper().ljust(7), path.ljust(24), list(content) or '(no body)')
+"
+```
+
+Real output from `fastapi-shop`:
+
+```
+POST    /token                   ['application/json']
+GET     /api/orders              ['application/json']
+POST    /api/orders              ['application/json']
+GET     /api/orders/{order_id}   ['application/json']
+```
+
+Every route declares `application/json`, so all four are the API. A route declaring `text/html` is the no-API case for that route. Cross-check against the source for the escape hatches:
+
+```bash
+grep -rEn "response_class|HTMLResponse|Jinja2Templates|StaticFiles" --include=*.py .
+```
+
+On the fixture this returns nothing, which agrees with the schema. Where the two disagree, believe the schema — it is generated from the live route table, and the grep is only reading text.
 
 **Auth shape:** the dependency names in the source tell you the scheme.
 
@@ -337,7 +418,7 @@ Telling this case apart is not about the framework. Both Django fixtures are Dja
 
 The check that settles it is the content type of a **successful, authenticated** response. An unauthenticated request is no good: `django_html`'s `/invoices/` returns `302` to `/login/` with `Content-Type: text/html` whether or not there is an API behind it. Signed in, the same URL with `Accept: application/json` returns `200 text/html; charset=utf-8` and an HTML document — that is the answer.
 
-Express reaches the same verdict by a different road: `res.json` appears nowhere in `express-shop`, and both its routes return `text/html` when asked for JSON.
+Express reaches the same verdict by a different road: the only JSON in `express-shop` is the guard's 401 error body, neither of its two routes returns any, and both answer `text/html` when asked for JSON.
 
 **Do not post to HTML form endpoints as a browser would.** It requires scraping a CSRF token out of markup, replaying a form encoding, and reading a 302 as success. It breaks the first time somebody edits a template, and it fails silently: a re-rendered form full of validation errors is still HTTP 200, so a write that was rejected is indistinguishable from one that worked.
 
@@ -357,6 +438,8 @@ Reads from an HTML app are workable — the page is parseable and the shape rare
 
 The reason is that the sections above are not documentation summaries. Every command in them was run against a live app, and every one of them turned up something the documentation would not have: `show_urls` is absent from a stock Django install; `app.routes` crashes on current FastAPI and reports no API before it does; `app.router` throws on Express 4 rather than returning `undefined`. All three were the *obvious* method. A section written without a running app to check it against would have shipped all three.
 
+Running it against one app is still not enough, and the Express section is the proof. Both of its greps passed against the fixture and both under-reported badly on any app written differently — one missed every `app.get` route, the other missed every `res.status(n).json(...)` response. A fixture only ever tells you the command works on *that* app. Catching those needed files written specifically to break the pattern. **So a stack ships here only once someone has run its commands against a live app and then tried to make them fail** — which is more work than reading the docs, and it is the whole reason the list is three long rather than six.
+
 Rails, Laravel and Go each have the same shape of problem waiting — implicit routing that generates URLs found in no file, a stack-specific auth convention, and an HTML-only case that has to be recognised rather than guessed at — and none of it has been checked here.
 
 **A stack listed on the strength of a route grep is a promise the skill cannot keep.** The owner finds out at step 5, after they have already chosen this path over a better one. "This is not covered yet" costs them five minutes. A confident wrong answer costs them the afternoon and the trust.
@@ -372,6 +455,8 @@ Rails, Laravel and Go each have the same shape of problem waiting — implicit r
 - [ ] Every route was probed **without** credentials and its status recorded. A single unauthenticated 200 was not read as "no auth on this app".
 - [ ] Django: `grep "rest_framework" settings.py` was run, and its result agrees with the content types actually observed.
 - [ ] FastAPI: the enumeration used `app.openapi()` or a live `/openapi.json`, never a bare loop over `app.routes`.
+- [ ] Express: the route grep matched **`.get(`, not `router.get`** — routes registered as `app.get`, `app.route`, `app.all`, or on a router variable not called `router`, were looked for and either found or ruled out.
+- [ ] Express: the API grep matched **`.json(`, not `res.json`** — a `res.status(n).json(...)` handler would have been found. No app was called no-API on a `res.json` grep alone.
 - [ ] Express: the installed major version was checked before any `_router` introspection, and the route list was reconciled against `app.use` mounts plus the router files.
 - [ ] The no-API test used an **authenticated** response's `Content-Type`, not a 302 to a login page.
 - [ ] If the answer was no-API, "reads work, writes are impossible" was said before any capability list was offered.
