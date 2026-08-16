@@ -134,7 +134,7 @@ Include the data model and the explicit **not in version one** list — those tw
 
 **Say the full path, and say what is already in it.** Don't ask them to choose a folder — the app is created where the session already is, and an agent can't reliably write outside it. But they can't confirm a location they were never shown, and "wherever you happened to open the terminal" is not the same as a decision. One line, as above.
 
-If the folder already contains a project — a `package.json`, a `src/`, a `.git` with history — **stop and say so.** Do not scaffold over it. Ask them to open a new, empty folder and start again there. A few stray files (a `README.md`, notes, a `.gitignore`) are fine and `references/stack.md` handles them; an existing app is not, and merging into one is unrecoverable in a way nothing else in this skill is.
+If the folder already contains a project — a `package.json`, a `src/`, a `.git` with history — **stop and say so.** Do not scaffold over it. Ask them to open a new, empty folder and start again there. A few stray files (a `README.md`, notes, a `.gitignore`) are fine and `references/stack.md` handles them; an existing app is not, and merging into one is unrecoverable in a way nothing else in this skill is. Offer them the other door: the `bring-your-own-agent` skill can give an assistant like Claude access to this existing app instead — without scaffolding anything or touching a line they wrote — if that's closer to what they actually want.
 
 Get a clear go-ahead. Adjust anything they push back on. If the answer reopens what the app *is* rather than tweaking a detail, go back to Step 1a — that's cheaper now than after the schema exists.
 

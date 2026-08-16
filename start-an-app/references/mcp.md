@@ -4,6 +4,8 @@ Last verified: 2026-08-16
 
 **Purpose:** Let Claude — or any assistant that speaks MCP — do the app's real work as the signed-in user, behind the same sign-in and the same permission checks as the buttons. No API keys to mint, paste or rotate: the assistant goes through the app's own front door and the person approves it on a consent screen.
 
+This file is for building agent access **into** a Next.js app you control — the tools call the same functions the buttons call, each person approves their own access, each can revoke it, and the assistant can only ever do what that person could do. If instead you'd rather not touch the app's code — it's not Next.js, not yours to edit, or you just want something quicker — the `bring-your-own-agent` skill bolts agent access on **beside** it instead: simpler and faster, but as one fixed login with no permission screen and no way to give one person less access than another. This path is genuinely the better one where it's available; that's why `bring-your-own-agent` sends people here first when it can.
+
 > Compatibility note: this area churns hard. Better Auth's own `mcp()` plugin is **deprecated** — use `@better-auth/oauth-provider`. Check the installed source rather than trusting any example, including this one, and treat every version number here as "what was true when last verified".
 
 The whole design rests on one rule: **the tools call the same functions the buttons call.** No second query path, no second permission check. That is the only reason the tool layer cannot drift away from what the UI enforces.
