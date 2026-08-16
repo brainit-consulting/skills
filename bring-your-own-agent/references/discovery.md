@@ -23,6 +23,26 @@ So: run the command that makes the framework list its own routes. Inference is t
 Enumerating is half the job. The framework tells you what it *registered*, not what *works*, and the gap between the two is real:
 
 - **A registered route can be broken.** DRF's router generates format-suffix routes (`/api/orders.json`) whether or not the view accepts a `format` argument. On the Django fixture the router enumerated **six** routes and only **four** answer: `/api/orders.json` and `/api/orders/1.json` both return **HTTP 500** with a valid token — `TypeError: OrderViewSet.list() got an unexpected keyword argument 'format'` — while `/api/orders/` and `/api/orders/1/` return 200. All six were in the enumerated list. Hand all six to an agent and a third of its tools fail every time they are used, with a stack trace that blames the app's own code and gives no hint that the route was auto-generated and never worked.
+- **A route that exists can answer `405`, and dropping it is the expensive mistake.** A probe is a request, and a request has a verb — so the natural probe, a `GET`, asks a POST-only endpoint a question it does not answer. Measured on `fastapi-shop`, with no credentials:
+
+  ```
+  $ curl -s -o /dev/null -w '%{http_code}\n' -X DELETE http://127.0.0.1:8001/api/orders
+  405
+  $ curl -s -o /dev/null -w '%{http_code}\n' -X DELETE http://127.0.0.1:8001/api/nonexistent
+  404
+  $ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8001/token
+  405
+  ```
+
+  **404 means there is nothing there. 405 means the route is there and your verb is wrong** — the opposite of a reason to discard it. That third line is the one to look at: `/token` is this app's login endpoint, the route `credentials.md` needs before anything else works, and a `GET` probe reports it as a failure. On the Next.js app this skill was validated against, **eleven of eighteen** route handlers export `POST` and nothing else; a rule that drops 405s drops all eleven, and the owner never learns they existed.
+
+  Two things measured alongside it, both of which mislead:
+
+  - **The `Allow` header is a hint, not the verb list.** The 405 above carried `allow: GET`, while `POST /api/orders` on the same path answers perfectly well (401 without credentials, 422 with a token and an empty body). Starlette answered from the first route registered on that path. Read it, then confirm against the enumeration.
+  - **Some stacks check auth before the method, so you never see the 405.** `DELETE /api/orders/` on `django_api` returns **401** with no credentials and **405** — `Allow: GET, POST, HEAD, OPTIONS`, complete this time — with a valid token. On DRF the verb question is answered only after the credential question, so an unauthenticated probe leaves it open. Re-probe once you have a credential, and do not read the earlier 401 as the final word on what the route does.
+
+  So record the status per route rather than a yes/no. Only 404, and a route that is genuinely broken — a 500 on every verb — are grounds for dropping something from the list.
+
 - **A trailing slash is not cosmetic, and the stacks disagree in opposite directions.** Measured on the fixtures:
 
   | Request | Django + DRF (:8000) | FastAPI (:8001) | Express (:3001) |
@@ -33,7 +53,35 @@ Enumerating is half the job. The framework tells you what it *registered*, not w
 
   A client that does not follow redirects sees a 301 or a 307 and reports failure. A client that *does* follow them may drop the body on the way, so a POST silently becomes a GET.
 
-So after enumerating, send one request to each route and keep the ones that answer. A route list is a claim; a status code is evidence.
+So after enumerating, send one request to each route and **write down the status you got**, per route, rather than a yes or a no. A route list is a claim; a status code is evidence — and each code says something different, which is the point of keeping it.
+
+---
+
+## The routes may not be the app
+
+Everything above answers *which URLs exist and work*. It does not answer the question the owner is actually asking, which is **how much of what their app does can be reached over HTTP at all**. Those are not the same question, and on some apps the answer to the second is "almost none" while every check in this file returns the reassuring answer.
+
+This is not hypothetical and it is not a Next.js problem, though that is where it was met. The validated case: a Next.js accounting app with **18** route handlers, of which three were of any use to an assistant — the rest being webhooks with signature checks, cron endpoints behind a shared secret, and browser-only flows. The app's actual work — create a client, raise an invoice, send it, mark it paid, add a transaction, import a statement, change settings — lives in **25 Server Actions**, which have no URL a program can call. The honest capability list was **two tools, against twenty-five Server Actions and three usable routes** — and the app passed every honesty check here on the way to that answer: it has an API, the API returns JSON, the routes enumerate, and they answer.
+
+**So the rule *never present a partial discovery as a complete one* can be broken while following every instruction in this file** — by reporting the routes truthfully and letting the owner infer that the routes are the app.
+
+**How to notice it, rather than hope to.** Three moves, none of which takes long:
+
+1. **Get the list of capabilities from the owner before you look at the code.** Ask what they *do* in the app in a normal week, in their words — "raise an invoice", "chase a late payer", "reconcile the bank" — and write the list down before discovery can bias it. Then map each item to a route you probed. **The unmapped ones are the finding.** Done in the other order, the routes suggest the capabilities and the missing ones are invisible, because nothing on the screen is where they would have been.
+2. **Count the other shape, whatever it is on this stack.** Work that has no URL still has to live somewhere, and every stack has a place for it:
+
+   | Stack | Where work hides from HTTP | How to count it |
+   |---|---|---|
+   | Next.js App Router | Server Actions | `.next/server/server-reference-manifest.json`, or files marked `'use server'` |
+   | Django / Rails / Laravel | form-post controllers that render HTML | routes whose response is `text/html`, from the probe above |
+   | Any stack | a single GraphQL endpoint | one route, many operations — count the schema's mutations, not the route |
+   | Any stack | admin-only interfaces, management commands, background jobs | they are in the repo and not in the route list |
+
+3. **Report both numbers side by side**, in the discovery report, in the owner's words: *"Your app does about twenty-eight things. Three of them have a web address a program can call, and two are worth a tool."* One number is a route count and reads as progress; two numbers are a ratio and read as a decision.
+
+That ratio is also the strongest argument the skill has for the better path. "Building it inside your app would reach the twenty-five this cannot" is a sentence with a number in it, and it is the difference between an owner choosing this path knowingly and choosing it because nobody counted.
+
+**Where the ratio is bad, say so at interview step 2**, in the same breath as the no-API case and for the same reason: at step 5 the owner has already chosen this path over a better one, on the strength of a list that was true and incomplete.
 
 ---
 
@@ -401,6 +449,127 @@ The schema also carries this: a `securitySchemes` block under `components` in `a
 
 ---
 
+## Next.js App Router
+
+**Read this section knowing it rests on one app.** Django, Express and FastAPI each have a fixture here, and their commands were then run against files written specifically to break them. This section was written from a single real Next.js 16 application met during validation — an accounting app nobody wrote for this skill — and it has not been run against a second one. Every count and every status below was measured on that app; treat them as real, and treat the commands as less battle-tested than the other three. `## Not yet supported` below explains why that distinction is worth making rather than glossing.
+
+It is here rather than in that list because `SKILL.md`'s Step 0 names Next.js with Better Auth as its strongest trigger for recommending the *other* path — so a Next.js owner is the likeliest person to read this file, and some of them will choose this path anyway.
+
+**Detect:** `next` in the dependencies.
+
+```bash
+node -e "const p=require('./package.json');console.log(p.dependencies&&p.dependencies.next)"
+```
+
+Observed: `16.2.6`. Then tell the two routers apart, because they route differently and only one is covered here: an `app/` or `src/app/` directory containing `layout.tsx` is the **App Router**, which this section is about. A `pages/` directory is the older **Pages Router** — not checked here, and it should be said to be uncovered rather than guessed at.
+
+**Enumerate: read the build's own route manifest.** Next.js writes `.next/app-path-routes-manifest.json` — source path to URL, for every route it serves. That is the Next.js equivalent of `manage.py shell` and `app.openapi()`, and like them it is the framework's own answer rather than yours:
+
+```bash
+python -c "
+import json
+m = json.load(open('.next/app-path-routes-manifest.json'))
+for src, url in sorted(m.items(), key=lambda kv: kv[1]):
+    print(url.ljust(30), src)
+"
+```
+
+Real output, a slice of the 49 entries:
+
+```
+/                              /page
+/admin                         /(app)/admin/page
+/admin/users                   /(app)/admin/users/page
+/api/auth/[...all]             /api/auth/[...all]/route
+/api/exports/ledger            /api/exports/ledger/route
+/api/integrations/ingest       /api/integrations/ingest/route
+/icon.svg                      /icon.svg/route
+/invoices                      /(app)/invoices/page
+/invoices/[id]                 /(app)/invoices/[id]/page
+/login                         /(auth)/login/page
+```
+
+Four things about that output, and the first is the reason to run it at all.
+
+- **The file tree lies about the URL, and this is where "a route is a file" stops being true.** Directories in brackets are **route groups**: they organise the source and are stripped from the URL. `/(app)/invoices/page` is served at `/invoices`, and a path built by reading the tree gives `/(app)/invoices`, which is a 404. On this app **17 of the 49 entries** sit inside a group — `(app)` wraps 13 and `(auth)` wraps 4 — so a third of the app is at an address the tree does not give you. `[id]` and `[...all]` are the opposite case: those brackets *are* part of the URL, as parameters.
+- **Methods are not in the manifest**, so read which of `GET`/`POST`/… each `route.ts` exports — the same instruction Django's `-` verbs column carries. **Match on `export`, not on `export function`**, for the reason the Express section gives at length:
+
+  ```bash
+  grep -rEn "^export .*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)" src/app --include=route.ts
+  ```
+
+  Measured on this app, the wide pattern finds all **18** route handlers and the narrow `export (async )?function (GET|POST|…)` finds **17**. The one it misses:
+
+  ```
+  src/app/api/auth/[...all]/route.ts:4:export const { GET, POST } = toNextJsHandler(auth);
+  ```
+
+  A destructured re-export is how every Better Auth and NextAuth app mounts its catch-all — so the route the narrow pattern loses is the **login endpoint**, the one `credentials.md` needs before anything else can work, and it is lost in silence.
+- **Not every entry is a file you can read.** `/icon.svg/route` is `src/app/icon.svg`, a metadata file Next.js serves as a route. Looking for a `route.ts` behind it wastes ten minutes; there is not one, and nothing says so.
+- **The manifest describes the last build, not the working tree.** It is generated by `next build` and refreshed by `next dev`, so a route added since the last build is simply absent. Check it rather than assume it:
+
+  ```bash
+  stat -c '%y %n' .next/app-path-routes-manifest.json
+  find src -name '*.ts*' -printf '%T@ %TY-%Tm-%Td %TH:%TM %p\n' | sort -rn | head -1
+  ```
+
+  Observed on this app: the manifest at `07:17` against a newest source file at `07:05` — built after the last edit, so the list is current. The other way round means the list is stale and must be announced as such.
+
+**Fallback when there is no `.next/`:** the manifests are build output, so a repository that has been cloned and never built or run has neither. There are two honest moves and neither is "run their build yourself" — building writes into their working tree and can need a database, environment variables and a licence you were not given.
+
+1. **Ask the owner to run `npm run dev` or `npm run build` once.** It is their command in their app, and `.next/` is in the gitignore every Next.js template ships with — check theirs and say so — so this changes nothing they track. This is much the better option: it gives you the real list.
+2. **Otherwise read the tree and expand by rule**, and say the list is **inferred**: every `route.ts` under `app/` (or `src/app/`) is an endpoint, every `page.tsx` is a page, the path is the directory path with **every `(group)` segment removed**, `[param]` kept as-is, and `route.ts` / `page.tsx` dropped from the end. That reproduces the manifest's URL for every hand-written route on the app above — it will not give you the entries Next.js generates for itself (`/_not-found`, an `icon.svg`), and it will not survive anything exotic — `basePath` or `rewrites` in `next.config`, `middleware.ts` rewriting paths, or `generateStaticParams`.
+
+**Is there an API at all?** Next.js is where this question needs asking most, and where the usual form of it gives the wrong answer. A `route.ts` is a JSON endpoint, so an app with 18 of them plainly "has an API" — and on this app that was true and nearly useless, because the app's actual work lives in Server Actions with no URL. Ask both halves:
+
+```bash
+# Half one: how many route handlers are reachable over HTTP?
+grep -rlE "^export .*(GET|POST|PUT|PATCH|DELETE)" src/app --include=route.ts | wc -l
+
+# Half two: how much is not?
+python -c "
+import json
+m = json.load(open('.next/server/server-reference-manifest.json'))
+acts = {(e['filename'], e['exportedName']) for e in m['node'].values()}
+print(len(acts), 'server actions')
+for f, n in sorted(acts)[:5]: print('  ', n.ljust(28), f)
+"
+```
+
+Real output from the second, on the same app:
+
+```
+25 server actions
+   setUserRoleAction            src/app/(app)/admin/users/_actions.ts
+   setViewOwnerAction           src/lib/accountant/actions.ts
+   acceptAccountantInviteAction src/lib/data/actions.ts
+   addTxnAction                 src/lib/data/actions.ts
+   answerAskAction              src/lib/data/actions.ts
+```
+
+(Without a build, the same list comes from the files: `grep -rl "use server" src --include=*.ts`, then the exported functions in each.)
+
+**Those 25 are enumerable and they are not callable, and the difference matters more than the count.** Next.js compiles each into a build-time hash id, and invoking one means posting to a page URL with a `Next-Action` header carrying that id — an internal protocol with no compatibility promise, whose ids change when the build changes. Driving it is the same bargain this file already refuses for HTML form posts: replaying an undocumented encoding that breaks silently the next time somebody deploys. **So count them, report them, and do not build tools on them.** The section above is where that number belongs in the report.
+
+The ordinary content-type check still applies to the routes that do exist, and it still has to be made against an **authenticated** response — on this app `GET /api/exports/ledger` answers `307` to `/login` when signed out, which tells you about the gate and nothing about the payload.
+
+**Auth shape:**
+
+- **A catch-all under `/api/auth/` is the tell.** `/api/auth/[...all]` with `toNextJsHandler` is Better Auth; `/api/auth/[...nextauth]` is NextAuth/Auth.js. Both mean a **session cookie** obtained by posting to a sign-in route under that same catch-all, and both put the login endpoint *in* the route list — which is a useful confirmation you read the scheme right, the same way FastAPI's `/token` is.
+- **`middleware.ts` at the repository root or in `src/` gates paths before any handler runs**, and it is the reason an unauthenticated probe can tell you about the middleware rather than the route. Read its `matcher`. This app has none — the gate is per handler — and the probes reflected that, unauthenticated and measured during validation:
+
+  ```
+  GET /api/integrations/ingest   405
+  GET /api/banksync/sync         405
+  GET /api/exports/ledger        307  -> /login
+  GET /api/cron/remind           401  text/plain
+  ```
+
+  Four routes, four different answers, and only one of them is a plain 401. Two are the 405 case above, and the 307 is a session gate redirecting to a login page — which `server.md` has a rule about, because a client that follows it gets a 200 and an HTML login form.
+- **Hand-written handlers usually invent their own scheme, and none of it is discoverable from the framework.** This app's ingest route takes `Authorization: Bearer <key>` and says so only in the body of its own 401. There is **no `WWW-Authenticate` header anywhere on the app** — `credentials.md` has the fallback for that, and it was written because of this app.
+
+---
+
 ## When there is no API
 
 A template-rendered app returns HTML. Under the write rule this means **reads work and writes are impossible**, and that must be said the moment the checks below answer it — at step 2 of the interview, before any list of what the assistant may do is offered. Not at step 5, by which point the owner has already chosen this path over a better one, on the strength of a capability list that was never true.
@@ -440,7 +609,9 @@ Reads from an HTML app are workable — the page is parseable and the shape rare
 
 The reason is that the sections above are not documentation summaries. Every command in them was run against a live app, and every one of them turned up something the documentation would not have: `show_urls` is absent from a stock Django install; `app.routes` crashes on current FastAPI and reports no API before it does; `app.router` throws on Express 4 rather than returning `undefined`. All three were the *obvious* method. A section written without a running app to check it against would have shipped all three.
 
-Running it against one app is still not enough, and the Express section is the proof. Both of its greps passed against the fixture and both under-reported badly on any app written differently — one missed every `app.get` route, the other missed every `res.status(n).json(...)` response. A fixture only ever tells you the command works on *that* app. Catching those needed files written specifically to break the pattern. **So a stack ships here only once someone has run its commands against a live app and then tried to make them fail** — which is more work than reading the docs, and it is the whole reason the list is three long rather than six.
+Running it against one app is still not enough, and the Express section is the proof. Both of its greps passed against the fixture and both under-reported badly on any app written differently — one missed every `app.get` route, the other missed every `res.status(n).json(...)` response. A fixture only ever tells you the command works on *that* app. Catching those needed files written specifically to break the pattern. **So a stack ships here only once someone has run its commands against a live app and then tried to make them fail** — which is more work than reading the docs, and it is the whole reason this list is as long as it is.
+
+**Next.js App Router sits between the two, and its section says so at the top.** Its commands were run against a live app — a real one, written by somebody else, for something else — but only one, and nobody has yet written the files that would break them. That is half the bar. The half outstanding is a second app and a deliberate attempt to make the two greps in it under-report, which is exactly the attempt that caught both Express failures. Until then its counts are evidence and its commands are a good first draft, and telling an owner which of those they are getting costs one sentence.
 
 Rails, Laravel and Go each have the same shape of problem waiting — implicit routing that generates URLs found in no file, a stack-specific auth convention, and an HTML-only case that has to be recognised rather than guessed at — and none of it has been checked here.
 
@@ -452,7 +623,10 @@ Rails, Laravel and Go each have the same shape of problem waiting — implicit r
 
 - [ ] The route list came from a command that made the framework enumerate itself, not from a grep for path strings.
 - [ ] If the app would not boot and the list was inferred, the words "inferred" and "may be incomplete" appear in what was told to the owner.
-- [ ] Every enumerated route was sent one request. Routes that did not answer were dropped from the list, not passed on. (DRF format-suffix routes are the usual casualty — check for a 500.)
+- [ ] Every enumerated route was sent one request and **its status recorded**, per route. Only 404s and routes broken on every verb were dropped. (DRF format-suffix routes are the usual casualty — check for a 500.)
+- [ ] No route was dropped on a **405**. Every 405 was re-probed with the verb its source exports, and where the stack answers 401 before 405, it was re-probed again once a credential existed.
+- [ ] The owner was asked what they *do* in the app, in their own words, **before** the route list was shown to them — and every item on that list was mapped to a route or reported as unreachable.
+- [ ] The report gives two numbers, not one: how many things the app does, and how many of them can be reached over HTTP. Where the second is much smaller, that was said at interview step 2.
 - [ ] Trailing-slash behaviour was measured, not assumed: the exact URL recorded is the one that returned 200, not the one that returned 301 or 307.
 - [ ] Every route was probed **without** credentials and its status recorded. A single unauthenticated 200 was not read as "no auth on this app".
 - [ ] Django: `grep "rest_framework" settings.py` was run, and its result agrees with the content types actually observed.
@@ -462,5 +636,9 @@ Rails, Laravel and Go each have the same shape of problem waiting — implicit r
 - [ ] Express: the installed major version was checked before any `_router` introspection, and the route list was reconciled against `app.use` mounts plus the router files.
 - [ ] The no-API test used an **authenticated** response's `Content-Type`, not a 302 to a login page.
 - [ ] If the answer was no-API, "reads work, writes are impossible" was said before any capability list was offered.
-- [ ] The stack is one of Django, Express or FastAPI. If not, the owner was told it is not covered rather than given a guessed route list.
+- [ ] Next.js: the route list came from `.next/app-path-routes-manifest.json`, not from the file tree — or, where there was no build, the list was announced as **inferred** and every `(group)` segment was removed from every path by hand.
+- [ ] Next.js: the manifest's timestamp was compared against the newest source file. A manifest older than the source was reported as a stale list.
+- [ ] Next.js: the method grep matched **`export`, not `export function`** — an `export const { GET, POST } = toNextJsHandler(auth)` catch-all would have been found. Server Actions were counted and reported as unreachable, not offered as capabilities.
+- [ ] Next.js: the owner was told this stack rests on one real app, unlike the other three.
+- [ ] The stack is one of Django, Express, FastAPI or Next.js App Router. If not — including Next.js's older Pages Router — the owner was told it is not covered rather than given a guessed route list.
 - [ ] The auth mechanism was named and handed to `credentials.md`; this file did not attempt to obtain or store the credential.

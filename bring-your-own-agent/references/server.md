@@ -105,6 +105,9 @@ function log(tool: string, args: unknown, outcome: string) {
  * django_api authenticates with DRF TokenAuthentication. The scheme word is
  * `Token`, not `Bearer`; `Bearer` returns a 401 identical to sending no header.
  * Paths keep their trailing slash - /api/orders returns 301, /api/orders/ 200.
+ *
+ * `redirect: "manual"` is deliberate and neither of the other two modes is
+ * safe here. See "A redirect is not an answer" below for the measurement.
  */
 async function api(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
@@ -114,8 +117,25 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
       "Content-Type": "application/json",
       ...(init.headers ?? {}),
     },
-    redirect: "error",
+    redirect: "manual",
   });
+}
+
+/**
+ * A 3xx is not an answer, and `res.ok` is false for one - so without this the
+ * redirect is reported as "HTTP 302" alongside a body that is empty, and the
+ * reader is told nothing about why. An app that bounces to a login page is
+ * saying the credential is missing or expired; say that instead.
+ * Returns the message when the response is a redirect, null otherwise.
+ */
+function redirectedAway(res: Response): string | null {
+  if (res.status < 300 || res.status >= 400) return null;
+  return (
+    `The app redirected to ${res.headers.get("location") ?? "another page"} ` +
+    `instead of answering. That usually means the credential in agent-access/.env ` +
+    `is missing or expired, so the app is asking whoever sent this to log in. ` +
+    `It can also mean the URL is one character out - check the trailing slash.`
+  );
 }
 
 /**
@@ -162,6 +182,11 @@ export const listOrders = {
     // an unknown ?limit= silently, returning every row with a 200.
     const capped = Math.min(limit, MAX_LIMIT);
     const res = await api(`/api/orders/?limit=${capped}`);
+    const bounced = redirectedAway(res);
+    if (bounced) {
+      log("list_orders", { limit: capped }, `error redirect_${res.status}`);
+      return failed(bounced);
+    }
     if (!res.ok) {
       log("list_orders", { limit: capped }, `error http_${res.status}`);
       return failed(`The app returned HTTP ${res.status}: ${await res.text()}`);
@@ -185,6 +210,11 @@ export const getOrder = {
   },
   handler: async ({ id }: { id: number }) => {
     const res = await api(`/api/orders/${id}/`);
+    const bounced = redirectedAway(res);
+    if (bounced) {
+      log("get_order", { id }, `error redirect_${res.status}`);
+      return failed(bounced);
+    }
     if (!res.ok) {
       log("get_order", { id }, `error http_${res.status}`);
       return failed(`The app returned HTTP ${res.status}: ${await res.text()}`);
@@ -219,6 +249,14 @@ export const createOrder = {
       method: "POST",
       body: JSON.stringify({ customer, total }),
     });
+    const bounced = redirectedAway(res);
+    if (bounced) {
+      // On a write this branch matters more, not less: a followed redirect can
+      // drop the body and turn the POST into a GET, so the row is never created
+      // and the response still looks like an answer.
+      log("create_order", { customer, total }, `error redirect_${res.status}`);
+      return failed(bounced);
+    }
     if (!res.ok) {
       log("create_order", { customer, total }, `error http_${res.status}`);
       return failed(`The app returned HTTP ${res.status}: ${await res.text()}`);
@@ -570,6 +608,61 @@ agent-access: 3 tools, stdio
 {"result":{"protocolVersion":"2024-11-05", ... },"jsonrpc":"2.0","id":1}
 ```
 
+### A redirect is not an answer — `redirect: "manual"`, and a branch for it
+
+Every generated `fetch` sets `redirect: "manual"` and every handler checks for a
+3xx before it checks `res.ok`. The two other modes both fail, in opposite
+directions, and the default is the worse of them.
+
+Measured against `django_html` on port 8002, an ordinary Django app that bounces
+an unauthenticated request to its login page — which is most apps with sessions.
+The same URL, three times, changing nothing but the option, on Node v22.22.3:
+
+```
+$ node three-way.mjs        # three fetches of http://127.0.0.1:8002/invoices/
+redirect:"error"     -> THREW TypeError: fetch failed | cause: unexpected redirect
+redirect:"manual"    -> status 302  res.ok = false  location /login/?next=/invoices/
+redirect:"follow"    -> status 200  res.ok = true   content-type text/html; charset=utf-8
+                        body starts: "<!DOCTYPE html> <html lang=\"en\"> <head>..."
+```
+
+**`"error"` throws, so `if (!res.ok)` never runs.** The exception leaves the
+handler before any of its error handling, and what reaches the client is
+`TypeError: fetch failed` — a message naming the *network*, on a machine whose
+network is fine, when the actual cause is an expired session. Nothing in it says
+auth, so the hour goes on the connection.
+
+**`"follow"` is the one to write down, because it is the default.** Leave the
+option out altogether and that unauthenticated request returns **200 with
+`res.ok` true**, carrying the login page:
+
+```
+$ node follow.mjs           # the same URL, with the option left out entirely
+status 200 | res.ok true | final url http://127.0.0.1:8002/login/?next=/invoices/
+         | redirected true | bytes 730
+<!DOCTYPE html> <html lang="en"> <head><meta charset="utf-8"><title>Log in</title></head>
+<body> <h1>Log in</h1> <form method="post"> ...
+```
+
+The tool then hands the assistant a login form as though it were data, and there
+is no error anywhere in the chain to notice — not in the status, not in `res.ok`,
+not in the log line. **A rejection indistinguishable from a success, reached by
+omitting one line.** That is the failure this whole skill keeps circling, and
+`"follow"` is what you get by not thinking about it.
+
+`res.redirected` and `res.url` do give it away, but only to code that thought to
+look; `res.ok` is what every handler actually checks. So the rule is the mode
+*and* the branch: `"manual"` alone reports "HTTP 302" with an empty body, which
+is true and unhelpful. The branch is what turns it into a sentence about the
+credential — the tool result observed on the real app during validation:
+
+> The app redirected to /login instead of answering. That means the session
+> cookie in agent-access/.env is missing or expired.
+
+Log the redirect as its own outcome (`error redirect_302`), not as `http_302`.
+When somebody reads `calls.log` weeks later, the difference between "the app
+said no" and "the app asked us to log in" is the whole diagnosis.
+
 ### Use the URL discovery proved, character for character
 
 The trailing slash is not cosmetic, and on a write it is not even a redirect. Measured on `django_api`:
@@ -589,7 +682,7 @@ APPEND_SLASH set. Django can't redirect to the slash URL while maintaining POST 
 
 (Read off the debug page, with `DEBUG = True`. On a deployment with debug off the same fault is a bare 500 and the sentence is only in the server's own log — so on someone else's production app, expect the status and not the explanation.)
 
-So a write to the slashless URL fails as a **server error**, which reads as the app being broken rather than the client being one character wrong. `redirect: "error"` on the fetch does not catch it, because nothing redirected — measured, it did not throw. Note also that `/api/orders.json` returns **200** on this app's `ModelViewSet` while the same route returns **500** on `django_shop`'s plain `ViewSet`. Two DRF apps, opposite answers: probe this app, never carry a result across from another.
+So a write to the slashless URL fails as a **server error**, which reads as the app being broken rather than the client being one character wrong. **No redirect setting catches this one**, and it is worth knowing which failure belongs to which rule: nothing redirected here, so the 3xx branch above never fires and the response arrives as an ordinary 500. The redirect rule protects you from an app that says "log in"; only the URL being right protects you from this. Note also that `/api/orders.json` returns **200** on this app's `ModelViewSet` while the same route returns **500** on `django_shop`'s plain `ViewSet`. Two DRF apps, opposite answers: probe this app, never carry a result across from another.
 
 ---
 
@@ -722,6 +815,85 @@ That form has an advantage the HTTP version does not: the database returns `capp
 
 ---
 
+## Two shapes the worked example does not have
+
+Both were met on a real app during validation — a Next.js accounting app nobody
+wrote for this skill — and neither is exotic. They are written down here so the
+next person does not work them out again from first principles.
+
+### Two tools may need two credentials, under two different schemes
+
+The example above carries one `APP_API_TOKEN` and that is the common case. It is
+not the only one. On the validation app the read tool needed a **session cookie**
+issued by the app's sign-in flow, and the write tool needed a **bearer key** of
+its own (`Authorization: Bearer fbk_…`) minted in a different part of the
+product. No single credential reached both.
+
+Three things change when that happens, and the third is the one that gets missed.
+
+- **Name the environment variables per credential, not per app.** `APP_API_TOKEN`
+  for one of two is a lie that survives into `.env.example` and the README.
+  `APP_SESSION_COOKIE` and `APP_INGEST_KEY` say which tool stops working when one
+  of them goes stale.
+- **Check each one at start-up, by name.** The `throw` at the top of `tools.ts`
+  exists so a missing credential names itself; a single check on one of two
+  variables gives that guarantee to one tool and silently withdraws it from the
+  other.
+- **The disclosure and the revocation are per identity.** `credentials.md`'s
+  one-identity sentence is written for one identity — say it once per credential,
+  and name what each one reaches. The failure this prevents is specific and
+  quiet: the owner runs the one revocation command in the README, sees the read
+  tool start failing, and reasonably concludes the assistant is switched off,
+  while the write tool keeps working because its key lives somewhere else
+  entirely. The README's "how to switch it off" section must be **every** command,
+  or it is worse than none.
+
+### A list endpoint may return CSV, with no `limit` parameter at all
+
+The validation app's ledger export takes no parameters at all and returns
+`Content-Type: text/csv; charset=utf-8` with a six-column header and every
+transaction on the account. There is no `?limit=`, no page parameter, and
+nothing to send. (Read off the handler's source; the live response could not be
+obtained on that run, because it is session-gated and no session could be
+created — see `credentials.md`.)
+
+**Then the cap applied to the rows is not the second cap — it is the only one.**
+The rule above says to send the cap *and* apply it again to what comes back; here
+the first half does not exist. Do not paper over that by sending a `?limit=` the
+app has never heard of: it changes nothing, and it leaves a line in the code that
+reads as though the app were being asked to help. Say in the tool's own comment
+that the app returns everything and the cap is applied here, and log both numbers
+the same way — `50 of 4211 rows` is the line that tells a reader what is really
+happening.
+
+The memory caveat above applies at its worst here, and it is worth saying plainly:
+every row crosses the network and is parsed before fifty are kept. On a large
+account that is fine for the assistant and not fine for the process.
+
+**The copy-fields-out rule applies to CSV columns exactly as it does to JSON
+keys**, and the mechanics differ enough to be worth stating:
+
+- **Select columns by header name, never by position.** A column inserted in the
+  middle of an export shifts every index after it, and nothing throws — the
+  amounts simply come back under the wrong heading. Read the header row, find the
+  index of each field you want by name, and build the object from those.
+- **A column added to the export later must not reach the assistant.** Same
+  failure as the JSON spread: it works perfectly, warns nobody, and nothing in
+  `agent-access/` changes to record that the assistant's view of the app widened.
+- **A CSV parse is not a JSON parse.** Quoted commas, embedded newlines and a
+  `\r\n` line ending are ordinary in exports from accounting software. Splitting
+  on `,` and `\n` gets the first ten rows right and the eleventh wrong, on the row
+  that happens to hold a customer named `"Smith, J."` — and a wrong split does not
+  throw, it shifts the columns and hands over an amount labelled as a date. Use a
+  real parser, and assert that every parsed row has the same number of fields as
+  the header; that is the check a bad split fails.
+
+The parsing points are ordinary CSV practice rather than something measured on
+this app, and are marked as such in `Verify` below. What was measured is the
+shape: a list endpoint with no limit to send.
+
+---
+
 ## The generated `README.md`
 
 It is written for whoever finds this folder in six months and does not know what it is. It records what was built, how it reaches the app, and — the part that is easy to leave out — what the owner agreed to.
@@ -821,7 +993,10 @@ Six things must be in it, and the last is the one that gets dropped:
 2. **Whether the database fallback is in play at all.** If it is, `credentials.md`'s row-visibility disclosure goes here too: the assistant can see rows the app would normally hide, because filters written in the app's code are invisible to the database.
 3. **That the agent acts as one identity**, in the words `credentials.md` gives.
 4. **How to run it** — install, the `.env` step, and the exact registration command with absolute paths — plus that the app itself has to be up. Whoever finds this folder in six months has to be able to start it without reading the source.
-5. **How to switch it off**, in one command, with what happens when you do.
+5. **How to switch it off**, in one command, with what happens when you do — and
+   **one command per credential** where there is more than one, since revoking
+   the first while the second still works is how an owner comes to believe they
+   have switched something off that is still running.
 6. **That the in-app alternative was offered and the owner chose this**, with the date. Without that line, the next reader finds a folder full of workarounds and assumes nobody knew better. With it, they know the trade was made deliberately and can weigh it again on its merits.
 
 ---
@@ -830,6 +1005,12 @@ Six things must be in it, and the last is the one that gets dropped:
 
 - [ ] The tool names are this app's verbs. There is no `call_endpoint`, `query`, `request` or other generic pass-through tool.
 - [ ] Every tool's URL is one that `discovery.md` probed and got a 200 from, character for character, trailing slash included. A slashless write was not assumed to redirect.
+- [ ] Every `fetch` sets `redirect: "manual"`. `grep -n "redirect:" tools.ts` returns nothing else — no `"error"`, and no fetch with the option missing, which is the same as `"follow"`.
+- [ ] Every handler checks for a 3xx **before** it checks `res.ok`, and the message it returns names the credential rather than the status. The failure was actually produced — the credential removed or expired, the tool called, and the message read.
+- [ ] A redirect is logged as its own outcome (`error redirect_302`), distinguishable in `calls.log` from an ordinary `http_302`.
+- [ ] Where the tools need more than one credential: each has its own environment variable named for what it reaches, each is checked separately at start-up, and the README gives the revocation command for **every** one of them.
+- [ ] Where a list endpoint takes no limit parameter: the tool does not send one, its comment says the app returns everything, and the log line records both numbers.
+- [ ] Where a tool reads CSV: columns are selected by **header name**, not by position; a real parser was used rather than a split on `,`; and every parsed row was checked to have as many fields as the header. (Measured for the shape of the endpoint; the parsing rules are ordinary practice, not measured here.)
 - [ ] The credential is in `agent-access/.env`, `.env` is named in `agent-access/.gitignore`, and `.env.example` with blank values is what gets committed.
 - [ ] The server refuses to start when the credential is missing, with a message naming `.env` — rather than starting and failing at the first call.
 - [ ] `.env` and `calls.log` are opened by a path derived from `import.meta.url`, not from the working directory.

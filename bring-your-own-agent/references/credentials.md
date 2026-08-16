@@ -153,6 +153,16 @@ www-authenticate: Bearer
 
 Send one unauthenticated request and read that line before writing any credential code. (The header name's casing varies by server — match case-insensitively.)
 
+**And expect it not to be there.** The header is what a framework's own auth layer emits; a hand-written route handler that checks a key itself has no reason to, and mostly does not. Measured on the Next.js app this skill was validated against: **zero occurrences of `WWW-Authenticate` anywhere** — not on the 401 from its ingest endpoint, not on the 401 from its cron endpoint, not on the 307 from its ledger export. Three rejections, three chances to name the scheme, none taken.
+
+So the check above is the first thing to try and not the only thing. When it comes back empty, in this order:
+
+1. **Read the body of the 401.** It is written by the person who wrote the guard, and it is usually more specific than the header would have been. That app's ingest route answers `{"error":"Missing Authorization: Bearer <key>"}` — the scheme word, the header name, and the shape of the value, in one line.
+2. **Read the guard in the source.** The Express section below is the model for this and the reasoning is identical: the credential is whatever a function in that app decided to read, so read the function. For a route handler, that is the first few lines of the file `discovery.md` already located.
+3. **Then confirm it by sending the wrong word**, which is the check that does not depend on anybody's documentation. `"Invalid token"` back means the word was right and the value was wrong; `"not provided"` / `"Not authenticated"` back means the word was wrong. Two requests settle it.
+
+What you must not do is guess `Bearer` because it is the common answer and move on. It is right often enough to be believed and wrong often enough to cost the afternoon, and the 401 it produces is the same one you get from sending no header at all.
+
 ---
 
 ## Django
@@ -357,6 +367,59 @@ $ curl -s -H "Authorization: Bearer nope" http://127.0.0.1:8001/api/orders
 Those last two are both 401 and they mean opposite things. The first says the username or password is wrong; the second says the login worked and the token did not. Read the body, not the status.
 
 **Where the dependency is `APIKeyHeader` or `APIKeyQuery` instead**, the constructor names the header or parameter directly and there is no token endpoint — treat it like the Express case: the owner supplies the value.
+
+---
+
+## When you cannot create a login for the assistant
+
+The rule is to make a dedicated account rather than borrow a person's, and the Django recipe above shows what that looks like when it works. It works there because Django hands you `manage.py shell` — a command-line path straight into the app's own data. **Most hosted software has no such path**, and on a modern SaaS the rule can dead-end in two different ways, both of which look like progress right up until they do not.
+
+### The sign-up that succeeds and issues nothing
+
+Measured on the Next.js app used for validation, whose sign-up endpoint is a public API route:
+
+```
+POST /api/auth/sign-up/email   200
+{"token":null,"user":{"name":"Agent Access","emailVerified":false, ...}}
+```
+
+**HTTP 200, a complete-looking user object, `"token": null`, and no `Set-Cookie` at all.** The cookie jar came back empty and the app's own data endpoint still answered 307 to `/login`. Every check an operator naturally runs — the status, the body, the absence of an error — says the account was created, and it was. There is simply no credential. Then:
+
+```
+POST /api/auth/sign-in/email   403
+{"message":"Email not verified","code":"EMAIL_NOT_VERIFIED"}
+```
+
+The account cannot sign in until a verification email reaches a real inbox, which is not something a server sitting beside the app can arrange.
+
+This is the same shape as the Django login form above — *a 200 from that POST is a failure, not a success* — arrived at from the other direction. So make the rule general: **after any sign-up or sign-in, check for the credential itself, never for the status.** A `Set-Cookie` in the response, or a non-null token in the body. Then spend one more request proving it on a real route before anything is built on it.
+
+**What to do when it dead-ends**, in this order:
+
+1. **Look for the app's own delegate role first** — see below. It is a better answer than either of the others when it exists.
+2. **Ask the owner to create the account through the app's own interface** and complete whatever verification it asks for. They can receive the email; you cannot. This costs them two minutes and keeps the dedicated identity, which is the whole point of the rule.
+3. **Use the owner's own credential, with the one-identity disclosure said louder**, and say plainly that revocation now means changing their own password or session rather than deleting a separate account.
+4. **Stop, and say so.** "No credential could be obtained" is a real outcome and an honest one.
+
+**What not to do, ever:** invent a credential, or reach for a development bypass. That app has a `DEV_FAKE_SESSION` flag, and a tool built on it would have passed every local test and failed on the real deployment — where nothing in the failure says "this was built against a bypass", because the flag is not there to mention itself.
+
+### On a per-tenant app, a fresh login sees nothing
+
+The second dead end is quieter, and it survives everything above: the account gets created, the credential works, every request returns 200 — and every list is empty.
+
+Most business software scopes its rows to whoever owns them. On the validation app the ledger export reads `bankFeed(ctx.ownerId)`, scoped to the signed-in user, so a brand-new agent account has empty books by construction. **The dedicated identity that makes revocation clean is the same thing that makes the agent useless**, and the failure arrives as a `200` with `[]` in it — which reads as "there is no data" rather than "this is the wrong identity". Nothing in the response distinguishes the two, and the assistant will report the empty list as a fact about the business.
+
+Two things follow.
+
+**Look for the app's own delegate or read-only role before creating anything.** Many apps already have one, because a real person needed it first — an accountant, a bookkeeper, a client, a contractor. The names vary: *invite an accountant*, *share access*, *add a team member*, *viewer*, *read-only API key*. The validation app has an accountant invite, and it is a better answer than either horn of the dilemma:
+
+- it grants access to **somebody else's** books, so there is data to read;
+- the app returns `canWrite: false` for it, **enforced in the app's own code**, not by an agreement to behave;
+- the grant is re-checked on every request, so the owner revoking it in the interface takes effect immediately, with nobody logged out of anything.
+
+That is the same set of properties the dedicated Django token gives you, obtained without touching the database and offered by the app on purpose. Where it exists, prefer it — over a new login, and over borrowing the owner's.
+
+**And prove the credential against data, not against a status code.** A 200 is not evidence that this identity can see anything. Call one read, count the rows, and check the number against what the owner sees on their own screen. **A 200 with an empty list is an unproven credential**, and it is the one failure in this file that survives every other check.
 
 ---
 
@@ -606,7 +669,7 @@ Say both at the point the choice is made, not once the thing is built. Neither i
 
 ## Verify
 
-- [ ] One unauthenticated request was sent and its `WWW-Authenticate` header read, before any credential code was written. The scheme word came from that header, not from a guess.
+- [ ] One unauthenticated request was sent and checked for a `WWW-Authenticate` header, before any credential code was written. Where the app emits one, the scheme word came from it. **Where it does not — measured, an app can emit none at all — the word came from the 401's body or from the guard's own source**, and either way it was confirmed by sending the wrong word as well as the right one. It was not guessed at.
 - [ ] The credential was tested with the **wrong** scheme word as well as the right one. A 200 from the wrong word means the mechanism is not what it was thought to be.
 - [ ] A 401 saying "credentials were not provided" / "Not authenticated" was read as *wrong scheme word*, not as *missing header*, before the header plumbing was investigated.
 - [ ] Where a token-auth path exists it was used, rather than a session cookie.
@@ -616,7 +679,11 @@ Say both at the point the choice is made, not once the thing is built. Neither i
 - [ ] Django 403s: the reason line inside the body was read, not just the status code. `CSRF token missing`, `CSRF cookie not set` and `Referer checking failed` are three different faults behind one status.
 - [ ] Express: the guard middleware was read for the exact header name, and the credential was tested against **every** route, not just one.
 - [ ] FastAPI: the token request was sent **form-encoded**. A 422 naming `username` and `password` as missing was read as wrong encoding, not wrong credentials.
+- [ ] The app was searched for its **own** delegate or read-only role — an accountant invite, a shared account, a viewer, a scoped API key — before a new login was created. Where one exists it was used.
 - [ ] A dedicated account was created for the agent where the app allows it, rather than reusing a person's login.
+- [ ] Any sign-up or sign-in was judged on the **credential**, not the status: a `Set-Cookie` or a non-null token in the response. A 200 with `"token": null` and no cookie was read as a failure.
+- [ ] Where no credential could be obtained, that was reported as the outcome. Nothing was invented, and no development bypass flag was used to make a tool appear to work.
+- [ ] The credential was proved **against data**: one read was called, the rows counted, and the count checked against what the owner sees. A 200 returning an empty list was not accepted as proof — on a per-tenant app it is what a wrong identity looks like.
 - [ ] Database fallback: `agent_readonly` was created, connected as, and an `INSERT` attempted — the statement for **that engine** (`DEFAULT VALUES` is a syntax error on MySQL). `UPDATE` and `DELETE` were attempted too.
 - [ ] The refusal **named a permission** — `permission denied for table …` / `INSERT command denied to user …` — rather than being any error at all. A syntax or constraint error was not counted as a pass.
 - [ ] The identical statement was run as an **admin** user and produced a **different** error. Identical errors mean the statement never reached the permission check and the test proved nothing.
