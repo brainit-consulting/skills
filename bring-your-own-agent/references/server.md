@@ -324,7 +324,7 @@ The message names `cjs` and never names `package.json`, so the search starts in 
 
 ### `agent-access/tsconfig.json`
 
-Small, and **not** a formality — the `.js` argument above is true only under this `module` setting, so writing a different one quietly removes the check:
+Small, and **not** a formality — the `.js` argument above holds only while `module` and `moduleResolution` are both `nodenext`, so a config that moves them together quietly removes the check:
 
 ```json
 {
@@ -340,18 +340,35 @@ Small, and **not** a formality — the `.js` argument above is true only under t
 }
 ```
 
-Measured, on a scratch copy of the folder with `.js` dropped from the `tools` import:
+Measured on TypeScript 7.0.2, on a scratch copy of the folder with `.js` dropped from the `tools` import. **The config above, unchanged:**
 
 ```
-$ npx tsc --noEmit -p tsconfig.json          # module/moduleResolution: nodenext
+$ npx tsc --noEmit -p tsconfig.json
 server.ts(23,60): error TS2835: Relative import paths need explicit file extensions in
 ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './tools.js'?
+```
 
-$ npx tsc --noEmit -p tsconfig.json          # the same code, moduleResolution: bundler
+**The same code, under an ordinary bundler-style config** — `"module": "esnext"` with `"moduleResolution": "bundler"`, everything else identical:
+
+```
+$ npx tsc --noEmit -p tsconfig.json
 (no output)
 ```
 
-**`bundler` is the trap**, because it is a perfectly reasonable thing to write and everything still passes. `TS2835` never fires, the import is left in a form Node will not resolve, and the only check that was going to catch it has been switched off by the file that was supposed to run it. `strict` matters for the same reason — the heterogeneous-array error at `:290` only appears under it.
+**That second one is the trap**, and it is worth being precise about its shape, because the near-miss behaves in the opposite way. A *self-consistent* bundler config is a perfectly reasonable thing to write, and under it everything passes: `TS2835` never fires, the import is left in a form Node will not resolve, and the only check that was going to catch it has been switched off by the file that was supposed to run it.
+
+Changing **only** `moduleResolution` and leaving `module` at `nodenext` is not that case — it fails, immediately and loudly, before compiling anything:
+
+```
+tsconfig.json(4,25): error TS5095: Option 'bundler' can only be used when 'module' is set to
+'preserve', 'commonjs', or 'es2015' or later.
+tsconfig.json(4,25): error TS5109: Option 'moduleResolution' must be set to 'NodeNext' (or left
+unspecified) when option 'module' is set to 'NodeNext'.
+```
+
+So the half-change is safe — it stops you and names the conflict. **The dangerous edit is the coherent one**, where both keys move together and nothing complains. That is the shape to watch for when someone regenerates this file or copies a `tsconfig.json` in from another project.
+
+`strict` matters for the same reason: the heterogeneous-array error at `:290` only appears under it, so dropping it also removes a check without removing anything visible.
 
 ### `agent-access/.env` and `.env.example`
 
