@@ -465,7 +465,7 @@ Put that command in the generated `README.md`. An owner who cannot switch a thin
 
 No SQL write, no exception, no flag. `credentials.md` gives the reason and makes the database user incapable of it: an agent writing SQL skips the app's validation, permissions, hooks and audit logging, and leaves the app in a state its own code believes impossible. That surfaces later, somewhere unrelated, as a bug nobody can reproduce.
 
-If the app has no API, there are no write tools. `discovery.md`'s no-API section is the branch to take, and it has to be taken at interview step 1.
+If the app has no API, there are no write tools. `discovery.md`'s no-API section is the branch to take, and it has to be taken at interview step 2 — as soon as discovery answers the question, and before the capability list at step 3 is agreed. Step 1 is too early to know: it settles which app, not what is in it.
 
 ### Every list tool takes `limit`, capped in the schema **and** where the rows are handled
 

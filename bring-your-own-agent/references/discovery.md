@@ -403,7 +403,9 @@ The schema also carries this: a `securitySchemes` block under `components` in `a
 
 ## When there is no API
 
-A template-rendered app returns HTML. Under the write rule this means **reads work and writes are impossible**, and that must be said at step 1 of the interview, not discovered at step 5 — by which point the owner has already chosen this path over a better one, on the strength of a capability list that was never true.
+A template-rendered app returns HTML. Under the write rule this means **reads work and writes are impossible**, and that must be said the moment the checks below answer it — at step 2 of the interview, before any list of what the assistant may do is offered. Not at step 5, by which point the owner has already chosen this path over a better one, on the strength of a capability list that was never true.
+
+(Step 2 is the earliest it can be said. Step 1 only establishes *which* app, and nothing has been read yet — so a rule to announce it there is a rule nobody can follow.)
 
 Telling this case apart is not about the framework. Both Django fixtures are Django; one has an API and one does not.
 
