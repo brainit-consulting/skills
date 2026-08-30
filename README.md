@@ -139,19 +139,35 @@ Two concrete consequences: `references/database.md` runs `vercel whoami` **befor
 
 ## Install
 
-**Normal use** — from the published copy, which works in Claude Code, Codex, Cursor, Gemini CLI, Copilot and others:
+**Normal use** — from this repo, which works in Claude Code, Codex, Cursor, Gemini CLI, Copilot and others:
 
 ```bash
-npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill start-an-app
+npx skills add brainit-consulting/skills --skill start-an-app
 ```
 
 ```bash
-npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill security-scanner
+npx skills add brainit-consulting/skills --skill security-scanner
 ```
 
 ```bash
-npx skills add brainit-consulting/DreamForgeSoftwareAgentSkills --skill bring-your-own-agent
+npx skills add brainit-consulting/skills --skill app-health-check
 ```
+
+```bash
+npx skills add brainit-consulting/skills --skill mobile-web-polish
+```
+
+```bash
+npx skills add brainit-consulting/skills --skill bring-your-own-agent
+```
+
+Or take the lot in one line:
+
+```bash
+npx skills add brainit-consulting/skills
+```
+
+Listed at [skills.sh/brainit-consulting/skills](https://www.skills.sh/brainit-consulting/skills). `bring-your-own-agent` is the newest and may not appear in the directory until it next indexes; installing it by name from this repo works regardless.
 
 **Working on the skill itself** — symlink this repo so edits take effect immediately (PowerShell, needs Developer Mode or an elevated shell):
 
