@@ -2,7 +2,7 @@
 
 Last verified: 2026-07-21
 
-**Purpose:** Give the app AI abilities (chat, text generation) through the AI SDK, with OpenRouter as the provider so one API key unlocks many models.
+**Purpose:** Give the app AI abilities (chat, text generation) through the AI SDK, with OpenRouter as the provider so one API key reaches many models.
 
 ## Install
 

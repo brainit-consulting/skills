@@ -1,6 +1,6 @@
 # Landing page and dashboard
 
-Last verified: 2026-07-27
+Last verified: 2026-09-21
 
 **Purpose:** Give the app a real front door and, when there are accounts, a real place to land after signing in. This is the step that decides whether the result looks like *their app* or like a scaffold with the boxes ticked.
 
@@ -33,6 +33,8 @@ Set it in **one place** — the CSS variables shadcn wrote into `src/app/globals
 
 Change the font if the default doesn't fit — `next/font/google` in `src/app/layout.tsx` is a one-line change and shifts the whole character more than any colour will.
 
+A theme colour for the phone's browser bar goes in its own `export const viewport`, not in `metadata`.
+
 Both the `:root` and `.dark` blocks exist. Whatever you change, check the app in both — a primary colour that's legible on white and invisible on near-black is a bug users will hit.
 
 Rules that hold regardless of direction:
@@ -61,7 +63,9 @@ Write it about *their* product, from the interview. Structure that works for alm
 2. **Hero** — what it is in one sentence a stranger understands, one supporting line, one primary action. Their words from the interview, not "Welcome to MyApp".
 3. **What you can do** — three or four real capabilities, named concretely ("Log a hike with photos and notes"), not adjectives ("Powerful. Fast. Simple.").
 4. **Pricing** — only if payments were set up, showing the real product name and price from `references/payments.md`.
-5. **Footer** — name, year, and only links that exist.
+5. **Footer** — name, year, and only links that exist. This is where later steps add theirs: `references/docs.md` puts a **Docs** link here if the app got documentation, and `references/legal.md` runs after both and decides whether this app owes a privacy policy or terms at all. Leave the footer somewhere they can add to it, and add nothing on spec. Where legal also built a consent banner, the footer carries the **Cookie preferences** control that reopens it.
+
+**Page titles are not set here.** `references/seo.md` owns everything in `<head>` — the title, the template every page's title slots into, the description, and the preview card — because it runs last and is the only step that sees every public page. Leave `src/app/layout.tsx`'s metadata alone; it gets fixed there, in one place, rather than in two that drift.
 
 **Never fabricate credibility.** No invented testimonials, customer quotes, company logos, star ratings, user counts, "trusted by 10,000 teams", or press mentions. The app has no users yet and everyone reading the page knows it. If a section would need social proof to work, leave the section out — an honest page with three real features beats a fake one, and fake reviews are the kind of thing that gets a real product in real trouble later.
 
@@ -71,7 +75,7 @@ Same rule for screenshots: show the actual UI or show nothing. No stock mockups.
 
 Only when sign-in was chosen. This is what proves auth actually works end to end, so build it even if it starts small.
 
-Put it in a route group so the protection is written once, in `src/app/(dashboard)/layout.tsx`:
+Put it in a route group so the shell and the signed-out redirect are written once, in `src/app/(dashboard)/layout.tsx`:
 
 ```tsx
 import { headers } from "next/headers";
@@ -95,7 +99,40 @@ export default async function DashboardLayout({
 }
 ```
 
-**Check the session on the server, in the layout or page.** Middleware is fine as an optimistic redirect to keep signed-out users from seeing a flash of the dashboard, but it is not the security boundary — a client-side or middleware-only check can be bypassed. Anything that reads or writes user data re-checks the session where it runs.
+**Check the session on the server, in every page and every action, not only in the layout.** The layout redirect above is for tidiness: a layout does not re-run on client-side navigation and does not stop a child page from rendering, so on its own it protects nothing. Put the check in one cached helper and call it at the top of each page, each server action and each route handler behind sign-in.
+
+Next's request interceptor is now a file called `proxy.ts` (it replaced `middleware.ts`, which is deprecated). It is optional. It is fine as an optimistic redirect that only looks at whether a cookie exists, and it is not the security boundary: a check that lives only in the browser or only in `proxy.ts` can be bypassed.
+
+Request data is asynchronous throughout: `await params`, `await searchParams`, `await headers()`, `await cookies()`.
+
+Write that helper now, in `src/lib/auth-guards.ts`, because this is the first step that needs it. `references/settings.md` adds `requireAdmin()` to the same file later and does not redefine this one:
+
+```ts
+import "server-only";
+import { cache } from "react";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+
+// cache() means a page, its layout and its data functions share one lookup per request.
+export const getSession = cache(async () => auth.api.getSession({ headers: await headers() }));
+
+/** For pages: sends a signed-out visitor to sign-in. */
+export async function requireUser() {
+  const session = await getSession();
+  if (!session) redirect("/sign-in");
+  return session;
+}
+
+/** For server actions and route handlers: throws instead of redirecting. */
+export async function requireUserAction() {
+  const session = await getSession();
+  if (!session) throw new Error("Not signed in");
+  return session;
+}
+```
+
+Leave room in the navigation for **Settings** — `references/settings.md` builds it later, after agent access, help, docs and legal have run, and hangs it off whatever nav you write here. It needs a place to live, not a placeholder page.
 
 The dashboard page itself shows **their real data**, scoped to the signed-in user — the nouns from the interview, filtered by `userId`, with the primary action ("Log a hike") in reach. A page that only says "Welcome back, user@example.com" proves auth works and nothing else; go one step further and render the actual thing the app is for.
 
@@ -105,9 +142,12 @@ Scope every query by the session user. On a multi-user app, a query that forgets
 
 - Signed out, `/` renders the right front door for this app, and every visible string is about their product.
 - No invented testimonials, logos, ratings, or user numbers anywhere.
+- Every footer link resolves, and there is no link to a legal page this app was never going to have.
 - Signed out, visiting `/dashboard` redirects to sign-in.
 - Signing in lands on the dashboard, which shows the signed-in user and their own data.
 - Sign out returns to the signed-out state, and `/dashboard` is protected again.
+- Every page, server action and route handler behind sign-in calls the session helper itself. Open one and look; the layout redirect does not count.
+- There is no `middleware.ts` in the project. If a request interceptor exists, it is `proxy.ts`.
 - One user's data is not visible to another (create a second account and confirm).
 - Empty states read as intentional, not broken.
 - The app looks right in both light and dark mode, and at a narrow viewport.
