@@ -1,6 +1,6 @@
 # Database (Drizzle ORM)
 
-Last verified: 2026-07-27
+Last verified: 2026-09-21
 
 **Purpose:** Store the app's data. Drizzle is the ORM in both branches; only the driver and connection differ. Follow exactly one branch: **SQLite** (local/prototype, zero setup, data lives in a file in the project) or **Postgres** (production-ready — the same database engine while you build and after you deploy, selected by one environment variable).
 
@@ -26,6 +26,8 @@ pnpm add -D @types/better-sqlite3
 pnpm add pg
 pnpm add -D @types/pg
 ```
+
+**Install what the registry's `latest` tag points at, and read the docs for that.** Drizzle's documentation site may describe a release candidate by default, with a different relations API and different install tags. The main skill's check-what's-current research settles which release is current before anything here is installed.
 
 ## Configure
 
@@ -54,7 +56,7 @@ import Database from "better-sqlite3";
 import * as schema from "./schema";
 
 const sqlite = new Database("./data/app.db");
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle({ client: sqlite, schema });
 ```
 
 Create the folder and ignore the data file: `mkdir -p data` and add `data/` to `.gitignore`.
@@ -100,7 +102,7 @@ vercel integration add neon --scope <team-slug>
 
 If the CLI flow has changed, do it in the Vercel dashboard instead: **Storage → Neon → Install**, then link it to this project.
 
-### The development branch does not create itself
+##### The development branch does not create itself
 
 **`integration add` points production, preview *and* development at the same branch: `main`.** Nothing about it makes a dev branch, so the first `db:migrate` from someone's laptop lands on production. This is the one step that has to be done deliberately — and the Verify section below is what catches it when it's missed.
 
@@ -137,7 +139,7 @@ Which branch each environment gets, for free, once this is set up:
 | Preview deployment | `preview/<git-branch>`, created per deployment |
 | Local development | `vercel-dev` |
 
-**Going to production: check, don't assume.** The integration sets *its own* variables — `POSTGRES_URL`, `PGHOST`, `PGUSER` and the rest — in all three environments, and that is the reason A is the default. But the app reads **`DATABASE_URL`**, and that one can end up scoped to development only: it is what the development-branch step above creates, and a project can reach a first deploy with no production `DATABASE_URL` at all. The app then starts against the integration's `PG*` fallbacks and fails on the first query, as described under the client above.
+**Going to production: check, don't assume.** The integration sets *its own* variables — `POSTGRES_URL`, `PGHOST`, `PGUSER` and the rest — in all three environments, and that is the reason A is the default. But the app reads **`DATABASE_URL`**, and that one can end up scoped to development only: it is what the development-branch step above creates, and a project can reach a first deploy with no production `DATABASE_URL` at all. Without the guard in Step 2's client, the app would then start against the integration's `PG*` fallbacks and fail on the first query.
 
 One command settles it, and it costs nothing to run:
 
@@ -151,12 +153,12 @@ vercel env ls production
 
 **B. Postgres in Docker**
 
-For users who already run Docker Desktop and want the database on their own machine. `docker-compose.yml` at project root:
+For users who already run Docker Desktop and want the database on their own machine. They install nothing else, and nothing is left running once the container is stopped. `docker-compose.yml` at project root:
 
 ```yaml
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:alpine
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
@@ -164,10 +166,16 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
 volumes:
   pgdata:
 ```
+
+**The volume is mounted at `/var/lib/postgresql`, not `/var/lib/postgresql/data`.** Current Postgres images keep their data in a versioned folder under that path; mounting the old `data` path means the container refuses to start or the data does not survive a restart. The check-what's-current research confirms the path for the image the tag currently points at.
+
+**Check what is already running before choosing the port.** `docker ps -a` is read-only and shows every container's ports. If 5432 is taken, or the user has other projects' databases on the machine, pick a free host port, use it in both `docker-compose.yml` and `DATABASE_URL`, and give the compose file a top-level `name:` so the container and volume are named after this app. **Only ever run `docker compose` commands from the project folder.** Never `docker system prune`, `docker volume prune` or anything else that acts on every container: the user's other work lives in the same Docker.
+
+The tag carries no version on purpose, so a fresh project gets the current stable Postgres. Say one thing about it to the user if they ever ask why: a Postgres data directory belongs to the major version that created it, so once the app has real data in it, an image that moves to a new major will refuse to start against the old volume — the fix is a dump and restore, not a flag. That is the moment to pin the major, not before.
 
 Append to `.env`:
 
@@ -177,7 +185,7 @@ DATABASE_URL=postgresql://app:app@localhost:5432/app
 
 Start it with `pnpm db:up` (see the scripts below). Docker Desktop must be running — if it isn't, `docker compose` fails with a daemon connection error; tell the user to start Docker Desktop rather than debugging the app.
 
-**Going to production:** the compose file is a local convenience only — a deployed app points `DATABASE_URL` at a hosted Postgres set in the host's environment variables. Say this at hand-off so the user doesn't think they need to deploy a container.
+**Going to production:** nothing in the code changes. The compose file is a local convenience only — a deployed app points `DATABASE_URL` at a hosted Postgres set in the host's environment variables. Say this at hand-off so the user doesn't think they need to deploy a container.
 
 ---
 
@@ -220,6 +228,8 @@ Append to `.env`:
 DATABASE_URL=postgresql://app:app@localhost:5432/app
 ```
 
+If something on the machine already holds 5432 — another project's database, in Docker or not — pick a free port and use it in both the script and `DATABASE_URL`.
+
 Add `data/` to `.gitignore`. It runs in the foreground, so it needs its own terminal alongside `pnpm dev` — tell the user that plainly, because a closed window looks like a broken app.
 
 ---
@@ -257,10 +267,12 @@ import * as schema from "./schema";
 export const db = drizzle({ connection: { dataDir: "./data/pgdata" }, schema });
 ```
 
+Add `data/` to `.gitignore`.
+
 Two limits to know before choosing it:
 
-- **One process at a time owns the data directory.** Stop `pnpm dev` before running `db:migrate` or `db:studio`, or they will fail to open the database.
-- **Confirm `drizzle-kit migrate` works before building on it.** Support has been unreliable in past versions. Run `pnpm db:generate && pnpm db:migrate` on the very first table; if it errors, move the user to A, B or C rather than applying SQL by hand — this skill never leaves a project without a working migration path.
+- **One process at a time owns the data directory.** Stop `pnpm dev` before running `db:migrate`, `db:studio` or `pnpm build` (which migrates first — see the scripts below), or they will fail to open the database.
+- **Confirm `drizzle-kit migrate` works before building on it.** Support has been unreliable in past releases. Run `pnpm db:generate && pnpm db:migrate` on the very first table; if it errors, move the user to A, B or C rather than applying SQL by hand — this skill never leaves a project without a working migration path.
 
 ---
 
@@ -276,7 +288,7 @@ Identical for A, B and C. For D, use the config and client shown in D instead, t
 import { config } from "dotenv";
 import { defineConfig } from "drizzle-kit";
 
-config({ path: [".env.local", ".env"] });
+config({ path: ".env.local", override: true });
 
 export default defineConfig({
   schema: "./src/lib/db/schema.ts",
@@ -285,6 +297,8 @@ export default defineConfig({
   dbCredentials: { url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL! },
 });
 ```
+
+**`drizzle-kit` loads `.env` by itself, before it reads this file. It does not read `.env.local`.** That is the only reason the dotenv line is there: option A keeps its connection strings in `.env.local`, and without the line `db:migrate` cannot see them. `override: true` makes `.env.local` win where both files set the same name, which matches what Next does at runtime — without it, the `.env` value drizzle-kit already loaded stays in place, and migrations can run against a different database from the one the app uses. Where there is no `.env.local` (options B and C, or a build on the host) the line does nothing.
 
 The `??` is what lets one config serve every option: hosted Postgres with a pooler supplies both variables and migrations correctly use the direct one; a local database supplies only `DATABASE_URL` and it falls through.
 
@@ -297,13 +311,16 @@ import * as schema from "./schema";
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
-    "The database isn't connected yet: run `vercel env pull .env.local`."
+    "The database isn't connected yet: DATABASE_URL is not set. " +
+      "With the hosted database, run `vercel env pull .env.local`. Otherwise add it to .env."
   );
 }
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
+export const db = drizzle({ client: pool, schema });
 ```
+
+**Pass one object: `drizzle({ client: pool, schema })`.** The object form is the one that survives Drizzle's next major release, which drops the positional `drizzle(pool, …)` form.
 
 **The guard is not defensive decoration, and it is not optional.** `new Pool({ connectionString: undefined })` does not fail — `pg` falls back to libpq's `PGHOST`, `PGUSER`, `PGPASSWORD` and `PGDATABASE`, every one of which the Neon integration sets. So an app missing `DATABASE_URL` doesn't refuse to start; it quietly connects to *a* database, which is not the one the migrations ran on, and throws `relation "..." does not exist` on the first query instead. That sends the user reading their schema when the actual fault is a missing environment variable one layer away. The main skill file requires this behaviour under "the database is not optional, so it does not degrade" — this is where it gets built.
 
@@ -318,6 +335,18 @@ Add to `package.json`:
 "db:migrate": "drizzle-kit migrate",
 "db:studio": "drizzle-kit studio"
 ```
+
+Also change the existing `build` script so migrations run on every deploy:
+
+```json
+"build": "pnpm db:migrate && next build"
+```
+
+(If the project was scaffolded with npm rather than pnpm, use `npm run db:migrate && next build`.)
+
+Without this, a deploy ships new code against an old database schema: the migration files are committed but nothing ever applies them on the host, and the first request touching a new column fails at runtime. Hooking `db:migrate` into `build` means the host applies pending migrations as part of the deploy, in the same step that produces the build. It is a no-op locally when there is nothing pending, so `pnpm build` stays safe to run any time.
+
+This needs the deployed environment to have the database connection variable the migration uses (`DATABASE_URL`, plus `DATABASE_URL_UNPOOLED` where the host offers a direct string; or the SQLite file path) set at *build* time, not just at runtime — say so at hand-off, because a build that can't reach the database fails the whole deploy. On option A a preview deployment migrates its own preview branch and production migrates `main`, which is what you want.
 
 **Docker (option B)** — also add:
 
@@ -343,22 +372,102 @@ pnpm db:generate   # writes a reviewable SQL file into ./drizzle
 pnpm db:migrate    # applies pending migrations
 ```
 
-Read what `db:generate` produced before applying it. Drizzle cannot always tell a rename from a drop-plus-add, and the generated SQL is where that shows up — a `DROP COLUMN` you didn't intend is obvious in the file and invisible if you skip it.
+Read what `db:generate` produced before applying it. Drizzle cannot always tell a rename from a drop-plus-add, and the generated SQL is where that shows up — a `DROP COLUMN` you didn't intend is obvious in the file and invisible if you skip it. Because `build` migrates first, generate and read the SQL before building too: a build reached with an ungenerated schema edit outstanding is the wrong moment to find out.
 
 Commit the `drizzle/` folder. It is source code, not build output.
 
-**Any timestamp a human reads back needs `withTimezone: true`.** A plain `timestamp` is stored without a zone and comes back interpreted as UTC, so an appointment booked for 9:30am renders as 5:30am — wrong by exactly the user's offset, on every row, in a way they notice on day one and never trust again:
+## Rules the database has to enforce itself
+
+Some rules cannot be left to application code, because two requests can pass the same check at the same instant. The common one: **two bookings, reservations or shifts for the same person or room must never overlap.** Postgres enforces that with an exclusion constraint, and Drizzle cannot express one, so it goes in a hand-written migration:
+
+```bash
+pnpm exec drizzle-kit generate --custom --name=no_overlap
+```
+
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+--> statement-breakpoint
+ALTER TABLE "bookings" ADD CONSTRAINT "bookings_no_overlap"
+  EXCLUDE USING gist (
+    "stylist_id" WITH =,
+    tstzrange("starts_at", "ends_at", '[)') WITH &&
+  ) WHERE ("status" = 'booked');
+```
+
+`'[)'` leaves the end instant out, so back-to-back slots are allowed. The `WHERE` is what frees a slot when a row is cancelled. In the app, catch SQLSTATE `23P01` and turn it into a sentence ("someone just took that time"); with Drizzle the code sits on the error's `cause`. Later `db:generate` runs leave the constraint alone, because drizzle-kit does not track it. Prove it once with a script that inserts an overlapping row directly, going round the app.
+
+This is a Postgres feature. SQLite has no exclusion constraints, so an app whose core promise is "no double bookings" belongs on the Postgres branch. On option D, confirm the `btree_gist` extension loads before relying on it; if it doesn't, move to A, B or C.
+
+**Anything that is a moment in time gets `withTimezone: true`.** A plain `timestamp` is stored without a zone and comes back interpreted as UTC, so an appointment booked for 9:30am renders as 5:30am — wrong by exactly the user's offset, on every row, in a way they notice on day one and never trust again:
 
 ```ts
 startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
 ```
 
-`defaultNow()` audit columns are fine either way; anything a person picks in a form is not.
+The `tstzrange` in the constraint above needs these columns to be `timestamptz` as well.
+
+**One app time zone, decided in one place.** If the app has a "today" or opening hours, decide the app's time zone in one config file and convert through it everywhere. A server in production runs on UTC, and "today" worked out from the server's clock is wrong for part of every day.
+
+## Schema conventions
+
+**Better Auth's tables are not yours to design.** `src/lib/db/auth-schema.ts` is written by the Better Auth CLI (see `references/auth.md`) and is left exactly as generated — same column names, same types, same `text` ids. Editing it breaks the adapter, and the next CLI run overwrites the edit anyway.
+
+**Every table you define gets a randomly generated UUID primary key.** Not an auto-incrementing integer. Sequential ids leak information the app never meant to publish — `/invoices/1042` tells any customer roughly how many invoices exist, and lets them walk the whole table by counting down — and they collide the moment data is merged or seeded from more than one place. A UUID is unguessable, and the row can be given its id before it ever reaches the database.
+
+The id fills itself in, so application code never passes one on insert.
+
+**Postgres branch:**
+
+```ts
+import { pgTable, uuid, text, timestamp } from "drizzle-orm/pg-core";
+import { user } from "./auth-schema";
+
+export const hikes = pgTable("hikes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  trail: text("trail").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+`defaultRandom()` is a real database-level default (`gen_random_uuid()`), so rows inserted by anything other than the app get an id too.
+
+**SQLite branch** — SQLite has no `uuid` column type, so the id is `text` filled in by Drizzle at insert time:
+
+```ts
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { user } from "./auth-schema";
+
+export const hikes = sqliteTable("hikes", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  trail: text("trail").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+```
+
+`$defaultFn` runs in the app, not the database — fine here, because every insert goes through Drizzle. `crypto.randomUUID()` is a global in the Node and edge runtimes; nothing to import.
+
+**The one trap: a column that points at a user stays `text`.** Better Auth's `user.id` is `text` in both branches, so `userId` above is `text` even in the Postgres example where the table's own id is `uuid`. Declaring it `uuid` looks consistent and fails — the foreign key won't create, and `db:migrate` stops with a type mismatch. The same applies to any other column referencing a generated auth table.
+
+Tables that reference *your* tables use the matching type: `uuid` on Postgres, `text` on SQLite.
 
 ## Verify
 
-- `pnpm db:generate` produces a migration file in `drizzle/`, and `pnpm db:migrate` applies it without errors.
+- `pnpm db:generate` produces a migration file in `drizzle/`, and `pnpm db:migrate` applies it without errors. No schema was ever pushed.
+- Every table you defined has a UUID primary key that fills itself in — inserting a row without passing an `id` works — and `auth-schema.ts` is untouched from what the Better Auth CLI generated.
+- `package.json` has `"build": "pnpm db:migrate && next build"`, and `pnpm build` completes — running migrations first, then the Next.js build.
 - Inserting and reading one row through `db` works (a quick script or the first page using a table is fine).
+- Where the app has a no-overlap rule: a script that inserts an overlapping row directly is refused with `23P01`, and the app shows a sentence for it rather than a stack trace.
 - `pnpm db:studio` opens and shows the tables (optional, good demo for the user).
 - **Option A only:** `.env.local` contains both `DATABASE_URL` and `DATABASE_URL_UNPOOLED`, and the Neon dashboard shows the migration landed on the `vercel-dev` branch — not on `main`. If it landed on `main`, the development branch was never enabled; fix that before any real data exists.
 - **Option A only:** the host in `DATABASE_URL` is the same host as in `POSTGRES_URL`, in the same `.env.local`. Two different hosts means two different Neon projects — the app is reading one and the integration provisioned the other, so the migrations, the data and the deployment are not all in the same place. Compare them by eye; the endpoint id (`ep-...`) is the part that has to match.
+- **Option B only:** `docker ps` shows this app's container under the compose project's own name, on the port `DATABASE_URL` uses, and no other project's container was stopped, removed or pruned along the way.

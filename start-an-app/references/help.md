@@ -89,7 +89,7 @@ function defaultBox(): Box {
 
 **Two things in shadcn's `DialogContent` will silently break the window**, and both cost an hour if you meet them by surprise:
 
-- It centres itself with `-translate-x-1/2 -translate-y-1/2`, which in **Tailwind v4 compiles to the `translate` property, not `transform`.** Setting `transform: "none"` inline therefore does nothing and the window opens half its own size off the top-left corner. Set **`translate: "none"`** as well.
+- It centres itself with `-translate-x-1/2 -translate-y-1/2`, which in **current Tailwind compiles to the `translate` property, not `transform`.** Setting `transform: "none"` inline therefore does nothing and the window opens half its own size off the top-left corner. Set **`translate: "none"`** as well.
 - Its open animation (`zoom-in-95`) leaves a **permanent `scale(0.95)`** on the element. The painted box and the layout box then disagree by 5%, so every drag and resize drifts. Kill it with `!animate-none` on the desktop variant — which also suits a system whose motion dial is near zero.
 
 Both are invisible until measured: the window looks roughly right and behaves subtly wrong. Check `getBoundingClientRect()` against the intended box rather than trusting your eyes.
@@ -116,7 +116,7 @@ Below `md`, render a full-screen sheet with no drag and no resize. Touch-draggin
 
 A guide that describes the app as it was on day one is worse than none, because it is confidently wrong.
 
-- **Step 4 is not done until every verb from Step 1a appears in a chapter.** That is the check that stops this shipping as a stub with "Getting started" and nothing else.
+- **The guide's frame is built in Step 4; its chapters are finished in Step 5, and Step 5 is not done until every verb from Step 1a appears in a chapter.** That is the check that stops this shipping as a stub with "Getting started" and nothing else.
 - Say at hand-off, in one line, that `src/content/help/chapters.ts` is a plain text file they can edit themselves — for many owners this is the first part of their own app they'll change, and it's a good first thing to change.
 - When a feature is added later, the guide is part of that feature, not a follow-up task.
 

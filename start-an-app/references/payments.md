@@ -1,6 +1,6 @@
 # Payments (Polar or Stripe)
 
-Last verified: 2026-07-27
+Last verified: 2026-09-21
 
 **Purpose:** Take money — a subscription or a one-off purchase — and know which users have paid.
 
@@ -107,7 +107,7 @@ export const { signIn, signUp, signOut, useSession, checkout, customer } = authC
 Adding the plugin can add columns and tables, so regenerate the schema and migrate:
 
 ```bash
-pnpm dlx @better-auth/cli@latest generate --config src/lib/auth.ts --output src/lib/db/auth-schema.ts -y
+pnpm dlx auth@latest generate --config src/lib/auth.ts --output src/lib/db/auth-schema.ts -y
 pnpm db:generate
 pnpm db:migrate
 ```
@@ -195,7 +195,7 @@ export const { signIn, signUp, signOut, useSession, subscription } = authClient;
 Regenerate the schema — this plugin definitely adds a `subscription` table and a customer id on `user`:
 
 ```bash
-pnpm dlx @better-auth/cli@latest generate --config src/lib/auth.ts --output src/lib/db/auth-schema.ts -y
+pnpm dlx auth@latest generate --config src/lib/auth.ts --output src/lib/db/auth-schema.ts -y
 pnpm db:generate
 pnpm db:migrate
 ```

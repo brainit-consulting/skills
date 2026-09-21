@@ -8,7 +8,7 @@ Format and anti-pattern rules are adapted from [taste-skill](https://github.com/
 
 ## When this runs
 
-Only if question 7 in the interview got an answer. Three ways in, strongest first:
+Always. Every app gets a `DESIGN.md`, short if the user gave no direction. The interview's design question decides which of the three ways in applies, strongest first:
 
 | The user said | Do this |
 | --- | --- |
@@ -59,7 +59,7 @@ Run this on each and keep the output:
 })();
 ```
 
-**The values come back as `lab()` and `oklab()` on any current site**, not `rgb()` — Tailwind v4 and most modern CSS emit them, and `getComputedStyle` hands them back unconverted. Do not regex the numbers out of them: `lab(94.2 0.69 2.96)` read as RGB gives a dark red where the real colour is near-white, and the whole palette comes out wrong while looking entirely plausible. Convert through a canvas, which does the colour maths for you:
+**The values come back as `lab()` and `oklab()` on any current site**, not `rgb()` — current Tailwind and most modern CSS emit them, and `getComputedStyle` hands them back unconverted. Do not regex the numbers out of them: `lab(94.2 0.69 2.96)` read as RGB gives a dark red where the real colour is near-white, and the whole palette comes out wrong while looking entirely plausible. Convert through a canvas, which does the colour maths for you:
 
 ```js
 const c = document.createElement("canvas"); c.width = c.height = 1;
