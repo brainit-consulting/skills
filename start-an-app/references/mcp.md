@@ -4,7 +4,7 @@ Last verified: 2026-09-21
 
 **Purpose:** Let AI agents — Claude, Claude Code, ChatGPT, Cursor, anything that speaks MCP — do the app's real work on behalf of a signed-in user. The app gains a second front door: the same actions, the same ownership rules, the same log, reached over an authenticated protocol instead of a browser. There are no API keys to mint, paste or rotate: the agent comes in through the app's own sign-in, and the person approves it on a consent screen.
 
-**This file builds agent access *into* a Next.js app you control.** The tools call the same functions the buttons call, each person approves their own access, each can revoke it, and the agent can only ever do what that person could do. If the app's code is not to be touched — it isn't Next.js, it isn't theirs to edit, or they want something quicker — the `bring-your-own-agent` skill puts agent access *beside* the app instead. That is simpler and faster, but it works as one fixed login: no permission screen, and no way to give one person less access than another. Where this path is available it is the better one, which is why `bring-your-own-agent` points people here first when it can and leaves the choice with them.
+**This file builds agent access *into* a Next.js app you control.** The tools call the same functions the buttons call, each person approves their own access, each can revoke it, and the agent can only ever do what that person could do. If the app's code is not to be touched — it isn't Next.js, it isn't theirs to edit, or they want something quicker — the `bring-your-own-agent` skill, from the same repository as this one, puts agent access *beside* the app instead. That is simpler and faster, but it works as one fixed login: no permission screen, and no way to give one person less access than another. Where this path is available it is the better one, which is why `bring-your-own-agent` points people here first when it can and leaves the choice with them.
 
 > **Hard rule: every tool takes the user from the token and scopes every query to them. Never trust an id the model passed you.** A tool call arrives carrying the user's full authority, but the thing that *triggered* it may be text the user never wrote — a web page the agent read, an email it summarised, another tool's output. In the browser a person can only click what they already own; a tool argument is a string somebody else may have chosen. `logged()` below exists to make this mechanical rather than something to remember, and every tool goes through it.
 >
@@ -60,12 +60,11 @@ Several separate things have to be character-identical: the plugin's `resource`,
 `src/lib/mcp-resource.ts`:
 
 ```ts
-// Blank counts as missing. `??` only falls back on null and undefined.
-const present = (value: string | undefined) => (value && value.trim() ? value.trim() : undefined);
-
+// `||`, not `??`: blank counts as missing. `??` only falls back on null and
+// undefined, and keeps an empty string.
 const BASE_URL = (
-  present(process.env.BETTER_AUTH_URL) ??
-  present(process.env.APP_URL) ??
+  process.env.BETTER_AUTH_URL?.trim() ||
+  process.env.APP_URL?.trim() ||
   "http://localhost:3000"
 ).replace(/\/$/, "");
 
@@ -89,7 +88,7 @@ export const SCOPE_LABELS: Record<string, string> = {
 
 This file must not import `"server-only"`: `src/lib/auth.ts` imports it, and the Better Auth CLI and any `tsx` script that loads the auth config cannot load that marker.
 
-**Treat a blank variable as a missing one**, which is what `present()` is for. A variable that exists but is empty passes straight through `??`, and `new URL("")` throws. If that value reaches a root layout, every route in the app answers 500. `APP_URL` is the second choice because `references/seo.md` uses it for the same public address; where both are set they must be the same value.
+**Treat a blank variable as a missing one**, which is what `||` is for. Measured on a real build: a variable that exists but is empty passes straight through `??`, `new URL("")` throws, the build fails and every route in the app answers 500. `references/seo.md` derives `siteUrl` the same way for the same reason. `APP_URL` is the second choice because `references/seo.md` uses it for the same public address; where both are set they must be the same value.
 
 No trailing slash, ever — the spec prefers it absent and a stray one is a mismatch like any other. **`ISSUER` includes `/api/auth`, and this was measured, not assumed:** on a running build, the authorisation-server document's `issuer`, the `iss` claim inside an issued token, and the `iss` parameter on the redirect back from consent were all `http://localhost:3000/api/auth`. Better Auth issues from its own base path, not from the bare origin.
 
@@ -202,7 +201,7 @@ Three things broke the first run on a real build, each with an error that does n
 
    Only the first generation needs this. Once the tables are in `auth-schema.ts`, later runs are clean.
 
-2. **If `auth.ts` imports from `auth-schema.ts`, the file has to exist first.** `references/settings.md` makes it do so (the first-account-becomes-admin hook counts users). Write a placeholder the CLI will overwrite:
+2. **If `auth.ts` imports from `auth-schema.ts`, the file has to exist first.** `references/auth.md` makes it do so (the first-account-becomes-admin hook counts users). In the normal order the file is already there, because auth.md generated it before this step ran, and nothing is needed. Only when generating from nothing, write a placeholder the CLI will overwrite:
 
    ```ts
    // src/lib/db/auth-schema.ts — placeholder, overwritten by `auth generate`
@@ -418,13 +417,13 @@ Revoking should also remove what the database *can* remove, so the agent cannot 
 
 ### They call the same code the buttons call
 
-Put the app's reads and writes in `src/lib/<domain>.ts` — `listHikes({ userId, limit })`, `createHike({ userId, ... })` — and have both the server actions and the tools call those. A tool that writes its own query is a tool whose ownership check drifts from the one the UI enforces, and nobody notices until the drift is a leak. One function, two callers, one `where`.
+Put the app's reads and writes in `src/lib/<domain>.ts` — `listHikes({ userId, limit })`, `createHike({ userId, via, ... })` — and have both the server actions and the tools call those. Plan limits and role rules live inside these functions too, so a tool call cannot pass a limit the page enforces. A tool that writes its own query is a tool whose ownership check drifts from the one the UI enforces, and nobody notices until the drift is a leak. One function, two callers, one `where`.
 
 Have those functions throw a small domain error class for anything a person could act on — "That time isn't free any more. Pick another." — with the message written to be shown as it stands. The page prints it next to the form; the wrapper below hands the same sentence to the model.
 
 Guard ids at the door of those functions too. An id arriving from an agent, or from a URL, that is not shaped like the app's ids should come back as "not found" before it reaches the database, where a malformed UUID is a thrown exception rather than an empty result.
 
-**Guards that read `headers()` do not work here.** Identity inside `/mcp` is a bearer token, not a session cookie, so a helper that calls `auth.api.getSession({ headers: await headers() })` finds nobody. A Next navigation throw (`redirect()`, `notFound()`) surfaces as a 500 rather than a refusal. These shared functions take `userId` as an argument and never look for a session themselves, and an admin check needs its own `isAdmin(userId)` that reads the row.
+**Guards that read `headers()` do not work here.** Identity inside `/mcp` is a bearer token, not a session cookie, so a helper that calls `auth.api.getSession({ headers: await headers() })` finds nobody. A Next navigation throw (`redirect()`, `notFound()`) surfaces as a 500 rather than a refusal. These shared functions take `userId` as an argument and never look for a session themselves, and an admin check needs its own `isAdmin(userId)` that reads the row. Where the data is shared by a team and not private to each user, the same applies to roles: the function reads the caller's role from their `user` row and applies the role rule (a plumber gets the jobs assigned to them, the office gets all), so the agent sees exactly what that person sees in the browser.
 
 ### The wrapper that enforces the hard rule
 
@@ -499,7 +498,7 @@ export function logged<A>(
 
 **Whatever a tool returns goes to the model.** `logged()` stringifies `data` and hands it over as the result. So no tool may ever return a token, a signup link, a password hash or any other secret. Pick out the fields you return; do not spread a database row that happens to carry one.
 
-The table goes in `src/lib/db/schema.ts` alongside the app's own — Postgres branch shown, SQLite uses `text` ids and `integer` timestamps per `references/database.md`:
+The table goes in `src/lib/db/schema.ts` alongside the app's own — Postgres branch shown, SQLite uses `text` ids, `integer` timestamps and `text("args", { mode: "json" })` in place of `jsonb`, per `references/database.md`:
 
 ```ts
 export const mcpCallLog = pgTable("mcp_call_log", {
@@ -522,7 +521,7 @@ export const mcpCallLog = pgTable("mcp_call_log", {
 
 `onDelete: "set null"` rather than `cascade`, for the same reason `references/ops.md` gives: the record of what an agent did outlives the account it did it to.
 
-**This log records reads as well as writes**, which is the one place this skill departs from `references/ops.md`'s "log writes, not reads". When the caller is a person, a read is noise. When the caller is an agent, a read *is* the event worth seeing — it is how data leaves the app. Tools that write should additionally make sure the ordinary activity log says `via: "agent"`, so it keeps telling the truth about who changed what.
+**This log records reads as well as writes**, which is the one place this skill departs from `references/ops.md`'s "log writes, not reads". When the caller is a person, a read is noise. When the caller is an agent, a read *is* the event worth seeing — it is how data leaves the app. Writes are also recorded in the ordinary activity log, and not by the tool: `logActivity` is called inside the shared `src/lib/<domain>` function (`references/ops.md`), so a write is logged whoever made it. The function takes a `via` argument and stores it inside `detail`, with no new column. A tool passes `via: "agent"`; the page's server action passes its own value. That is what keeps the activity log telling the truth about who changed what.
 
 **One gap to know about:** a call the SDK rejects before any tool runs — arguments that fail the schema, a tool name that does not exist — never reaches `logged()`, so it is not in the log. Measured: a request for five times the allowed `limit` came back as an input validation error and left no row. Everything that reaches a tool is logged, scope refusals and domain errors included.
 
@@ -569,7 +568,7 @@ export function registerTools(server: McpServer) {
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     logged("log_hike", "hikes:write", async (input, userId) => ({
-      data: await createHike({ userId, ...input }),
+      data: await createHike({ userId, via: "agent", ...input }),
       rows: 1,
     })),
   );
@@ -602,18 +601,16 @@ An agent working out of sight is exactly the thing this skill says an app must n
 
 ### Sign-in has to carry the request through
 
-The agent sends the user to `loginPage` with a signed OAuth query in the URL. Put `oauthProviderClient()` from `@better-auth/oauth-provider/client` on the auth client:
+The agent sends the user to `loginPage` with a signed OAuth query in the URL. Put `oauthProviderClient()` from `@better-auth/oauth-provider/client` on the auth client. This is a fragment to add to the file `references/auth.md` already wrote, not a replacement for it: ADD the import and the one plugin, and keep every plugin and every named export (`signIn`, `signUp`, `signOut`, `useSession` and whatever else is there) exactly as they are. Replacing the file drops those exports and breaks every form that imports them.
 
 ```ts
-// src/lib/auth-client.ts
-import { createAuthClient } from "better-auth/react";
-import { inferAdditionalFields } from "better-auth/client/plugins";
+// src/lib/auth-client.ts — add these two things, change nothing else
 import { oauthProviderClient } from "@better-auth/oauth-provider/client";
-import type { auth } from "@/lib/auth";
 
-export const authClient = createAuthClient({
-  plugins: [inferAdditionalFields<typeof auth>(), oauthProviderClient()],
-});
+  plugins: [
+    // ...existing plugins, e.g. inferAdditionalFields<typeof auth>()
+    oauthProviderClient(),
+  ],
 ```
 
 With that in place the sign-in form needs no special case. The plugin copies the page's OAuth query into the `signIn.email` request, the server answers with a redirect instead of the usual body, and Better Auth's client follows it to the consent screen. The only thing the form must do is *not* push to the dashboard when that happened:
@@ -622,7 +619,7 @@ With that in place the sign-in form needs no special case. The plugin copies the
 const { data, error } = await signIn.email({ email, password });
 if (error) { /* show it */ return; }
 if (data?.redirect && data.url) return; // already on its way to consent
-router.push("/dashboard");
+router.push("/dashboard"); // or wherever this app sends people after sign-in; a personal tool uses "/"
 ```
 
 ### The consent screen
@@ -646,24 +643,81 @@ Do not auto-approve, and do not skip the screen for "trusted" clients — a clie
 
 `references/settings.md` builds this section: what has access, what it can do, when it was granted, when it was last used, and a Revoke button. `auth.api.getOAuthConsents({ headers })` lists them; last-used comes from `mcp_call_log`.
 
-**Revoke is three things, not one.** Read from the plugin's source on a real build: deleting a consent removes the consent row and nothing else. The agent's refresh token would go on fetching new access tokens, and the plugin's own revocation endpoint needs the client's credentials and the token itself, which the user never has. So the server action does this, through Better Auth's own adapter:
+**Revoke is three things, not one.** Read from the plugin's source on a real build: deleting a consent removes the consent row and nothing else. The agent's refresh token would go on fetching new access tokens, and the plugin's own revocation endpoint needs the client's credentials and the token itself, which the user never has.
+
+**Revoke is defined here, once.** `references/settings.md` builds the page and its button calls the server action below; it does not write its own. The account-deletion hook in settings.md calls the function underneath it. One copy of the deletes, two callers.
+
+`src/lib/mcp/revoke.ts` — the function. It takes a `userId` and reads no session, so the deletion hook in `src/lib/auth.ts` can call it. For the same reason it must not import `"server-only"` or `@/lib/auth` (that would be a circular import), which is why it uses Drizzle on the plugin's own tables:
 
 ```ts
-const consent = await auth.api.getOAuthConsent({ query: { id: consentId }, headers }); // checks ownership
-await auth.api.deleteOAuthConsent({ body: { id: consentId }, headers });
+import { and, eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { oauthAccessToken, oauthClient, oauthConsent, oauthRefreshToken } from "@/lib/db/schema";
 
-const { adapter } = await auth.$context;
-const mine = [
-  { field: "clientId", value: consent.clientId },
-  { field: "userId", value: session.user.id },
-];
-await adapter.deleteMany({ model: "oauthAccessToken", where: mine });
-await adapter.deleteMany({ model: "oauthRefreshToken", where: mine });
+/** Take one agent's access away from one person. */
+export async function revokeAgentAccess(userId: string, clientId: string) {
+  if (!userId || !clientId) return;
+
+  await db
+    .delete(oauthConsent)
+    .where(and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)));
+  await db
+    .delete(oauthAccessToken)
+    .where(and(eq(oauthAccessToken.userId, userId), eq(oauthAccessToken.clientId, clientId)));
+  await db
+    .delete(oauthRefreshToken)
+    .where(and(eq(oauthRefreshToken.userId, userId), eq(oauthRefreshToken.clientId, clientId)));
+
+  // The registration goes too, but only when nobody else still uses it.
+  const [stillUsed] = await db
+    .select({ id: oauthConsent.id })
+    .from(oauthConsent)
+    .where(eq(oauthConsent.clientId, clientId))
+    .limit(1);
+  if (!stillUsed) await db.delete(oauthClient).where(eq(oauthClient.clientId, clientId));
+}
+
+/** Account deletion: every connection this person approved. */
+export async function revokeAllAgentAccess(userId: string) {
+  const rows = await db
+    .select({ clientId: oauthConsent.clientId })
+    .from(oauthConsent)
+    .where(eq(oauthConsent.userId, userId));
+  for (const clientId of new Set(rows.map((row) => row.clientId))) {
+    await revokeAgentAccess(userId, clientId);
+  }
+}
 ```
+
+`src/lib/mcp/actions.ts` — the server action the Revoke button posts to, with the consent's id in a hidden `consentId` field:
+
+```ts
+"use server";
+
+import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
+import { auth } from "@/lib/auth";
+import { requireUserAction } from "@/lib/auth-guards";
+import { revokeAgentAccess } from "@/lib/mcp/revoke";
+
+export async function revokeConnection(form: FormData) {
+  const session = await requireUserAction();
+  const consentId = String(form.get("consentId") ?? "");
+
+  // Looked up as the signed-in person, so somebody else's consent id finds nothing.
+  const consent = await auth.api.getOAuthConsent({ query: { id: consentId }, headers: await headers() });
+  if (!consent || consent.userId !== session.user.id) throw new Error("That connection wasn't found.");
+
+  await revokeAgentAccess(session.user.id, consent.clientId);
+  revalidatePath("/settings/connections");
+}
+```
+
+An earlier build did the token deletes through Better Auth's adapter (`adapter.deleteMany` on `oauthAccessToken` and `oauthRefreshToken`) from inside the action. The Drizzle form above, and calling it from the deletion hook, is not yet built with this skill: confirm the table and column names against the generated `auth-schema.ts` (the type-checker will refuse a wrong one), and prove it with the revoke items in Verify below. This is the plugin's own token and consent data, not the `user` table, so the rule against writing the user table directly is not in play.
 
 That stops the agent getting a *new* token. `connectionStillAllowed()` in the route is what stops the one it is already holding. Both are needed, and the page may only say "the next call is refused" once the revoke-then-call test in Verify has actually passed.
 
-**Revoking leaves the registration behind, so clear that too.** The OAuth *client* row survives a revoke, still pinned to the scopes it registered with. Change the scope list afterwards and that client keeps asking with its old one and fails with `invalid_scope` for ever, with no way to recover from inside the app. After the deletes above, drop the client row as well — but only when no other consent still points at it. One client row can serve several people, and revoking your own access must never reach into someone else's. Clients that identified themselves with a metadata document have no row to clear.
+**Revoking leaves the registration behind, so clear that too.** The OAuth *client* row survives a revoke, still pinned to the scopes it registered with. Change the scope list afterwards and that client keeps asking with its old one and fails with `invalid_scope` for ever, with no way to recover from inside the app. That is the last step of `revokeAgentAccess()` above: it drops the client row as well — but only when no other consent still points at it. One client row can serve several people, and revoking your own access must never reach into someone else's. Clients that identified themselves with a metadata document have no row to clear.
 
 ### The call log
 
@@ -749,6 +803,14 @@ Don't build it unless the user asks for it specifically and understands that. If
 
 Run these; do not reason about them.
 
+**When each one can run.** Three groups, because this step runs before `references/settings.md` and `references/ops.md`, and because no account is created before Step 6:
+
+- *Now, no account needed:* the unauthenticated `POST`, the `405`s, the discovery documents, `offline_access`, the written-out scope list, the file locations, the tool annotations, and the blank-variable start.
+- *Deferred to Step 6, after the user has signed up:* everything that needs a token, which means everything that needs somebody to click Allow. The builder does not sign up to get one. The person makes the first account, then approves the stand-in client from *Testing the whole flow* themselves.
+- *Deferred further, until `references/settings.md` and `references/ops.md` have run:* every item that names Connected apps or `/settings/system`. Until then the revoke test can be run by calling `revokeAgentAccess()` from a `tsx` script, which proves the endpoint check; the button is proved once the page exists.
+
+The second-account test needs a second account. On a one-owner app only one can exist, so it is reported at hand-off as "not applicable: only one account can exist", per `references/verify.md`. On an invited-people-only app the second account is a fixture made through the app's own invite function, per the same file.
+
 - **First, because it has never been observed passing:** with a connection made and a tool call working, revoke it in Connected apps and make the same call again with the same unexpired token. It must answer `401` — without restarting the server, and without waiting for the token to run out. If it answers `200`, the Revoke button is lying and nothing else on this list matters yet.
 - The same for a deleted account: a token issued to it is refused on the next call.
 - The endpoint answers at `/mcp` — `src/app/mcp/route.ts` — and there is no `src/app/api/mcp/` directory left behind.
@@ -763,11 +825,12 @@ Run these; do not reason about them.
 - `clientRegistrationAllowedScopes` in `src/lib/auth.ts` is a written-out list, not a spread of `MCP_SCOPES`.
 - Adding the server in Claude Code opens the app's own sign-in page, then a consent screen wearing the app's design, and the tools appear afterwards. Signing in from that page lands on consent, not on the dashboard.
 - A read tool returns only the signed-in user's rows, and asking for more than the schema's maximum is rejected rather than clamped silently.
-- **Second account test:** signed in as a different user, ask the agent for the first account's record by its id. It fails server-side — an empty result is not good enough, because that means the query ran.
-- A write tool creates a real row that shows up in the app's own UI on refresh, and the activity log records it as the app's verb, done by an agent.
+- **Second account test** (open sign-up and invited apps only, see above): signed in as a different user, ask the agent for the first account's record by its id. It fails server-side — an empty result is not good enough, because that means the query ran.
+- A write tool creates a real row that shows up in the app's own UI on refresh, and the activity log records it as the app's verb with `via: "agent"` inside `detail`, written by the shared domain function and not by the tool.
 - A domain error — a taken slot, a record that doesn't exist — comes back as a tool result with `isError: true` and a sentence, not as a protocol failure.
 - Approving read access only, then asking the agent to write, is refused by the tool — not merely absent from the consent screen — and the refusal is in the call log.
 - After a revoke, the client row is gone when nobody else had approved that client, and still there when somebody had.
+- `grep -rnE "deleteOAuthConsent|delete\(oauth" src` shows the revoke deletes in `src/lib/mcp/revoke.ts` and nowhere else. The settings page imports `revokeConnection`; it has no copy of its own.
 - No tool's result contains a token, a link that signs somebody in, or any other secret.
 - `/settings/system` lists the calls that were just made, including the reads and the refusals, with the tool name, the arguments and the client.
 - Every tool has a `title`, a `readOnlyHint` or `destructiveHint`, and a description that names a real reason to call it — no `create_row`, no catch-all with a `method` argument.

@@ -1,8 +1,8 @@
 # Deploying to Vercel
 
-Last verified: 2026-07-28
+Last verified: 2026-09-21
 
-**Purpose:** Take the app that runs on the user's machine and make it work at a real web address, for real people. **Loaded only when the user has said yes to the offer in Step 5** — putting something on the internet is one of the four things this skill never does on its own initiative.
+**Purpose:** Take the app that runs on the user's machine and make it work at a real web address, for real people. **Loaded only when the user has said yes to the offer in Step 8** — putting something on the internet is one of the four things this skill never does on its own initiative.
 
 The whole of this file exists because of one asymmetry: the app has been running against environment variables that live in files on the user's laptop, and the deployment cannot see any of them. Everything below is a consequence of that.
 
@@ -26,7 +26,7 @@ Find every environment variable the source depends on:
 grep -rho "process\.env\.[A-Z0-9_]*" src | sort -u
 ```
 
-That list — minus anything Vercel sets itself (`VERCEL_*`, `NODE_ENV`) — is what production needs. Then see what is actually there:
+That list — minus anything Vercel sets itself (`VERCEL_*`, `NODE_ENV`) — is what production needs. **The grep cannot see everything.** It misses variables read outside `src` — `drizzle.config.ts` reads the database URL for the migrations that run at build — and variables an SDK reads for itself without the app ever naming them, which is how the email, uploads and jobs providers usually find their keys. Add those from the table below for each branch that ran. Then see what is actually there:
 
 ```bash
 vercel env ls production
@@ -38,11 +38,22 @@ What typically has to be added, and why each one is missed:
 
 | Variable | Why it's missing | Where the value comes from |
 |---|---|---|
-| `DATABASE_URL` | The Neon integration sets `POSTGRES_URL` and `PG*`; `DATABASE_URL` can be development-scoped only | Copy the pooled URL from `.env.local` |
+| `DATABASE_URL` | The Neon integration sets `POSTGRES_URL` and `PG*`; `DATABASE_URL` can be development-scoped only | The hosting integration's **production** environment — see below. Never `.env.local` |
+| `DATABASE_URL_UNPOOLED` | Same as above, and nothing in `src` reads it, so the grep never lists it | The production environment's direct (unpooled) URL. Migrations run at build and use it |
 | `BETTER_AUTH_SECRET` | Written into `.env`, which is gitignored and never uploaded | **Generate a fresh one** — see below |
 | `BETTER_AUTH_URL` | Same, and its local value is `http://localhost:3000` | The deployed origin — see Step 3 |
-| `OPENROUTER_API_KEY`, `POLAR_*`, Google client id/secret | All hand-written into `.env` | The same values, unless the user is going live for real |
+| `APP_URL` | Same. The sitemap, canonical URLs, links in emails and agent access are built from it | The deployed origin, **the same value as `BETTER_AUTH_URL`** |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Email branch. Hand-written into `.env` | The same key; `EMAIL_FROM` has to be an address on a domain the provider has verified, or live mail is refused |
+| `CONTACT_TO_EMAIL` | Contact form on an app with no accounts. Hand-written into `.env` | The address the owner wants visitors' messages sent to |
+| The Inngest keys (event key and signing key) | Jobs branch. Local development needs neither, so they were never written anywhere | The provider's dashboard or its hosting integration. Use the exact variable names `references/jobs.md` and the check-what's-current step settled on |
+| `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` | AI branch. Hand-written into `.env`; without the model name the feature reports itself as not set up | The same values |
+| `POLAR_*` or `STRIPE_*`, whichever payments branch ran | Hand-written into `.env`, in test mode | The same test values, unless the user is going live for real. The webhook secret is different per endpoint: create the live endpoint and take its secret |
+| `RESEND_WEBHOOK_SECRET` | Email branch, only if delivery status was wired | From the webhook endpoint registered for the deployed address |
+| `INNGEST_API_KEY` | Jobs branch, only if the system page shows live run detail | The provider's dashboard |
+| Google client id/secret | Hand-written into `.env` | The same values, with the production callback address added in the Google console |
 | `NEXT_PUBLIC_*` anything | Inlined at **build** time, so it must exist before the build, not just at runtime | Whatever the flag should be in production |
+
+**The production database URL comes from the hosting integration's production environment, never from `.env.local`.** On the hosted default, `.env.local` holds the *development* branch — `references/database.md` went to some trouble to make that so. Copying it to production gives a live site that reads and writes the user's development data, passes every check below, and is found out weeks later. Read the production values where the integration keeps them: `vercel env ls production` shows whether `DATABASE_URL` and `DATABASE_URL_UNPOOLED` are already set for production, and the database provider's dashboard shows the pooled and direct strings for the production branch if they are not. Carry both. The build runs `pnpm db:migrate` through `drizzle.config.ts`, which uses the unpooled one, so a production environment with only the pooled URL falls back to it for migrations, which is the connection `references/database.md` says not to migrate over. Afterwards, confirm in the provider's dashboard that the migration landed on the production branch and not the development one.
 
 `BLOB_READ_WRITE_TOKEN` is the exception that looks like the rule: connecting a Blob store in the Vercel dashboard sets it for you. `references/storage.md` covers it.
 
@@ -71,7 +82,7 @@ printf '%s' "<new value>" | vercel env add NAME production
 
 `vercel env pull` writes an empty string for variables that were added this way — they are stored write-only. `NAME=""` in the pulled file means "cannot be shown", **not** "was saved empty, add it again". Adding them a second time because the pull looked wrong is a loop that can eat twenty minutes and ends where it started.
 
-The way to confirm a value landed is to use the deployed app. That is what Step 5 is for.
+The way to confirm a value landed is to use the deployed app. That is what Step 6 is for.
 
 ## Step 2 — Deploy
 
@@ -114,7 +125,7 @@ Then redeploy, and the `Aliased` line will show the new address.
 
 Better Auth checks the origin of every sign-in request against its configured URL. `references/auth.md` documents this as a localhost port problem; deployment is the same failure with a different cause, and the message — `Invalid origin` — still says nothing about what is actually wrong.
 
-- `BETTER_AUTH_URL` must be the deployed origin, exactly: scheme, host, no trailing slash.
+- `BETTER_AUTH_URL` must be the deployed origin, exactly: scheme, host, no trailing slash. `APP_URL` holds the same value. Set both, never one blank: an empty value is not the same as a missing one to code that builds a URL from it.
 - If **more than one hostname** serves the app — the assigned name and a renamed one, a custom domain alongside the `.vercel.app` — the extras need to be trusted explicitly, or a sign-in from the one the user actually typed is refused:
 
   ```ts
@@ -129,13 +140,26 @@ Better Auth checks the origin of every sign-in request against its configured UR
 
 - Google sign-in, if it was set up, needs the production callback URL added in the Google console: `https://<domain>/api/auth/callback/google`. Google matches exactly, and nothing in `redirect_uri_mismatch` mentions that the deployment is new.
 
-## Step 5 — Verify, on the live URL
+## Step 5 — The first account on the live site is the owner's
+
+The live database is new and empty, and `references/auth.md` makes the first account created on a database the admin. So whoever signs up first on the live address owns the app — the account made on `localhost` does not exist here.
+
+- **One owner, and invited people only: the agent never signs up on the live site.** Not to test, not with a throwaway address. On a one-owner app that account takes the owner's seat and sign-up closes behind it; on an invited app it becomes the admin who does the inviting. Either way the person is locked out of their own app on its first day.
+- **The person signs up first, immediately after the deploy, before the address is shared with anyone.** Until they do, the first stranger to find the address becomes the owner. Say it in those words, give them the link, and wait:
+
+  > It's live at https://<domain>. Sign up there now, before you send the link to anyone — the first account on the live site becomes the owner. Tell me when you're in and I'll finish the checks.
+
+- **Open sign-up: the person still goes first**, for the same reason — the first account is the admin and can open the system page. After that a probe account is an ordinary user and is safe to create; remove it when the checks are done.
+- **No accounts:** nothing to do here.
+
+## Step 6 — Verify, on the live URL
 
 Locally proves nothing here. Every check below is against the deployed address.
 
-- `curl -s -o /dev/null -w "%{http_code}" https://<domain>/` returns **200**, not a 302 to Vercel SSO.
+- `curl -s -o /dev/null -w "%{http_code}" https://<domain>/` returns **200**, not a 302 to Vercel SSO. Where `/` is inside the protected group, a redirect to the app's own `/sign-in` is the pass, and `/sign-in` returns 200.
 - The front door renders, and any `NEXT_PUBLIC_` flag has taken effect (those are baked in at build time — if one is wrong, no amount of redeploying without a rebuild fixes it).
-- **Sign up with a new account on the live site, sign out, sign back in.** This is the check that exercises `DATABASE_URL`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` in one action — if all three are right, it works, and if any one is wrong, it doesn't.
+- **The person signs up on the live site (Step 5), signs out, signs back in.** This is the check that exercises `DATABASE_URL`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` in one action — if all three are right, it works, and if any one is wrong, it doesn't. On one-owner and invited apps only they can do it; ask them what happened rather than doing it for them.
+- **One owner: a second sign-up on the live site is refused.** The same POST `references/verify.md` sends locally, against the live address, after the person is in: `403`. This is safe for the agent to send only once the owner's account exists.
 - **Create one real record through the app's own UI and reload the page.** That proves the deployment is talking to the database the migrations ran on, which a page that merely renders does not.
 - Uploads, if set up: upload a file and confirm it renders after a refresh — this is where a missing Blob store shows up.
 - Payments, if set up: the test-mode checkout still completes from the deployed origin.
@@ -146,6 +170,7 @@ Locally proves nothing here. Every check below is against the deployed address.
 Tell the user, in plain words:
 
 - The address, and that anyone with the link can open it.
+- That the account they made on the live site is the owner's, and it is separate from the one on their machine. If they have not signed up there yet, that is the first thing to do, before the link goes to anyone.
 - That the database behind it is the **live** one — the one their local app has been carefully kept away from. Anything they do on the live site is real.
 - Which environment variables now exist in two places (their machine and Vercel), and that changing one on Vercel needs a redeploy to take effect.
 - That a preview deployment happens for every future push, at its own URL, and those are private to them.

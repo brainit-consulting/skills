@@ -87,7 +87,7 @@ Initialize shadcn/ui with defaults:
 pnpm dlx shadcn@latest init -d
 ```
 
-**Know what the default gives you.** `-d` now installs components built on Base UI, not Radix. Both are maintained; take the default unless the user has a reason not to (`-b radix` selects the other). It changes how components are written, so say it once to anything that writes UI afterwards: Base UI uses a `render` prop where Radix used `asChild`, and the class helper is imported as `import { cn } from "cn"`. That is a small package from the shadcn team which the CLI installs, not a typo.
+**Know what the default gives you.** `-d` now installs components built on Base UI, not Radix. Both are maintained; take the default unless the user has a reason not to (`-b radix` selects the other). It changes how components are written, so say it once to anything that writes UI afterwards: Base UI uses a `render` prop where Radix used `asChild`, and the generated components import the class helper as `import { cn } from "cn"`. That is a small package from the shadcn team which the CLI installs, not a typo. `src/lib/utils.ts` re-exports it, so `import { cn } from "@/lib/utils"` works as well (both measured on the real build). Use either; they are the same function.
 
 **The stock components break most design systems in three places. Fix them once, here, before any page uses them**, or every page works round them separately:
 
@@ -98,8 +98,10 @@ pnpm dlx shadcn@latest init -d
 Add components before pages are written, not during. If several agents build pages at once, none of them may run `shadcn add`: it installs packages, and two installs racing each other damage the lockfile. Add the likely set up front:
 
 ```bash
-pnpm dlx shadcn@latest add button card input label select textarea table dialog alert-dialog badge checkbox separator tabs switch
+pnpm dlx shadcn@latest add button card input label select textarea table dialog alert-dialog badge checkbox separator tabs switch sheet
 ```
+
+`sheet` is there for the phone version of the help guide in `references/help.md`; leave it out only if the build sheet has no built-in help and no page wants a slide-over panel.
 
 ## Configure
 
@@ -114,9 +116,30 @@ src/
 
 Create `.env` at the project root now (empty is fine) and confirm `.env*` is in `.gitignore` — later steps append to it.
 
+### Start the history
+
+The scaffold was made with `--disable-git`, so there is no repository yet. Make one now, at the project root, once the `.gitignore` check above has passed:
+
+```bash
+git init -b main
+git add -A
+git commit -m "Base project"
+```
+
+Then **commit after every Step 4 step**, once that step's Verify has passed — one commit per reference file, with a message that names it ("Database", "Sign-in"). This is local history only; nothing is pushed.
+
+It is not housekeeping. `references/verify.md` reads the current commit with `git rev-parse HEAD` and checks for schema drift with `git status --porcelain drizzle`. Measured on the real build with no commits: `HEAD` is an "unknown revision", and the drift check prints `?? drizzle/` whether or not anything changed, so it proves nothing.
+
+If `git commit` refuses because no name and email are set, ask the user for them. Do not invent an identity and do not change their global git settings without being asked.
+
+## What runs next
+
+`references/design.md`, straight away. The design step comes right after the base project and before the database, so `globals.css` and `layout.tsx` carry the app's own tokens and fonts before the first real page is written, and every page built afterwards inherits them. The three component fixes above are made against stock values here; the design step may adjust them again once `DESIGN.md` exists.
+
 ## Verify
 
 - `package.json` sits in the current working directory — there is no nested project folder, and no `scaffold-tmp` left behind.
 - `AGENTS.md` and `CLAUDE.md` from the installer sit at the project root.
-- `pnpm dev` (`npm run dev` on an npm project) starts without errors and http://localhost:3000 renders.
+- `pnpm dev` (`npm run dev` on an npm project) starts without errors and http://localhost:3000 renders. If the dev server prints a different port because 3000 was taken, use that port here and in every later check.
 - A shadcn `Button` imported into `src/app/page.tsx` renders styled.
+- `git log --oneline` shows the first commit on `main`, and `git ls-files` lists no `.env` file.

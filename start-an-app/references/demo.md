@@ -1,6 +1,6 @@
 # Demo mode
 
-Last verified: 2026-07-28
+Last verified: 2026-09-21
 
 **Purpose:** Let a stranger try the app without being handed the owner's data. A shared account, believable sample content, and a badge saying plainly what this is. **Loaded on request only** — when the user wants to *show* the app to someone (a client, a prospect, a colleague, a landing page visitor) rather than use it.
 
@@ -91,6 +91,22 @@ import { auth } from "../src/lib/auth";
 
 ### What the script does
 
+**Never let the script create the first account on a database.** `references/auth.md` makes the first account the admin, so a seed run against an empty database — a freshly deployed one is exactly that — turns the demo login printed on the landing page into the owner, and every visitor can open the system page. Count the admins first, and stop if there are none:
+
+```ts
+// shape, not gospel — use the app's own schema import
+const admins = await db.select().from(user).where(eq(user.role, "admin")).limit(1);
+if (admins.length === 0) {
+  throw new Error(
+    "No admin account yet. The owner signs up first; then run pnpm demo:seed again.",
+  );
+}
+```
+
+The order on a live site is therefore fixed: deploy, the person signs up on the live address (`references/deploy.md` Step 5), *then* the seed runs. With an admin already there, the demo account is an ordinary user and cannot open the system page. Not yet built with this skill: the guard above has not been run; prove it with the Verify items below.
+
+**Demo mode needs open sign-up.** A shared login is a second account, so it cannot exist on a "one owner" app — the hook refuses it, correctly — and on an "invited people only" app it would need an invitation of its own. If the app is either of those, say so to the user before building any of this. The choices are a screenshot or a recording, or a separate demo deployment with its own database built as open sign-up, and which one is theirs to pick. Where the app widened its roles, check for the role that may see the system page instead of `"admin"`.
+
 **Create the account through Better Auth, never by inserting a row.** `auth.api.signUpEmail({ body: { email, password, name } })` — password hashing is Better Auth's format and hand-written rows produce an account that exists and cannot sign in. Check for the account first so a re-run doesn't try to create it twice.
 
 **Make it re-runnable, and say so at hand-off.** Visitors edit and delete things; a demo drifts. The script should clear the sample records and lay them down again — deleting the top of the ownership chain and letting `onDelete: "cascade"` do the rest is usually one statement. Leave the demo *account* alone.
@@ -113,6 +129,9 @@ import { auth } from "../src/lib/auth";
 - With it set to `true`, the badge appears on both the front door and the in-app header.
 - The credentials on the card are the ones that work. Type them into the normal sign-in form — not just the shortcut button — and land inside the app.
 - The one-click button signs in and lands on the app's main page, on the deployed site, not only locally.
+- Run against a database with no accounts in it, `pnpm demo:seed` stops with the "no admin account yet" message and creates nothing. Use a scratch database for this, never the user's.
+- The demo account's role is `user`, and signed in as the demo account `/settings/system` answers `404`.
+- On the live site the person signed up before the seed ran, and the agent created no account there other than the demo one.
 - `pnpm demo:seed` runs twice in a row without error, and the second run leaves the same data as the first.
 - The seeded diary/list/board shows something on **today**, and no visible number is a round fake.
 - The sentence under the card is true of what the demo actually does.
