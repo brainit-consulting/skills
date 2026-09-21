@@ -62,7 +62,7 @@ Several separate things have to be character-identical: the plugin's `resource`,
 ```ts
 // `||`, not `??`: blank counts as missing. `??` only falls back on null and
 // undefined, and keeps an empty string.
-const BASE_URL = (
+export const BASE_URL = (
   process.env.BETTER_AUTH_URL?.trim() ||
   process.env.APP_URL?.trim() ||
   "http://localhost:3000"
@@ -104,10 +104,11 @@ import { nextCookies } from "better-auth/next-js";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { mcp } from "@better-auth/mcp";
-import { MCP_RESOURCE, MCP_SCOPES } from "@/lib/mcp-resource";
+import { BASE_URL, MCP_RESOURCE, MCP_SCOPES } from "@/lib/mcp-resource";
 
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL,
+  // The shared BASE_URL, never process.env.BETTER_AUTH_URL directly. See below.
+  baseURL: BASE_URL,
   // ...existing config
 
   plugins: [
@@ -409,7 +410,9 @@ When it returns false the route answers a real `401` with `WWW-Authenticate`, as
 
 It relies on a consent row being written when the user clicks Allow. That was measured: after approving a dynamically registered client, `oauth_consent` held one row with the client id, the user id and the granted scopes.
 
-**Be honest about how far this was tested.** On the build this was found in, the check was written, compiled, and sat in front of six successful tool calls made with a real token — so it does not wrongly refuse an approved connection. The other half, *revoke and then call again with the same unexpired token*, **was not run** before that session ended. It is the first item in Verify below for that reason. Run it; do not inherit the assumption.
+**`baseURL` takes the shared `BASE_URL`, and this one was measured.** `src/lib/mcp-resource.ts` exports `BASE_URL` with its `||` fallback, and `auth.ts` uses it. Passing `process.env.BETTER_AUTH_URL` straight through looks equivalent and is not: with the variable present but empty, plain Better Auth only warns, but the agent-access plugins need a real address when they start, and every page behind sign-in, both discovery documents and `/mcp` answered `500` with `TypeError: Invalid URL`. The public pages kept working, which is what makes it easy to miss. Fixing only `site.ts` and `mcp-resource.ts` did not cure it; the build still logged the error until `baseURL` shared the fallback. After that, the blank-settings sweep from `references/verify.md` answered 200, 307 and 401 with no URL errors. The health card in `references/ops.md` is where the missing value gets reported, in words.
+
+**Be honest about how far this was tested.** On the build this was found in, the check was written, compiled, and sat in front of six successful tool calls made with a real token — so it does not wrongly refuse an approved connection. The other half was measured afterwards with a token signed by the app's own keys: permission in place, `200`; consent row removed and the *same* token with most of an hour left, `401` carrying `error="invalid_token"` and the `resource_metadata` pointer; consent restored, `200` again. What that run did **not** cover is the Revoke button itself calling the removal, so the first Verify item below still stands: click the real button, then make the call.
 
 Revoking should also remove what the database *can* remove, so the agent cannot quietly fetch itself a fresh token. See *Connected apps* below.
 
@@ -811,7 +814,7 @@ Run these; do not reason about them.
 
 The second-account test needs a second account. On a one-owner app only one can exist, so it is reported at hand-off as "not applicable: only one account can exist", per `references/verify.md`. On an invited-people-only app the second account is a fixture made through the app's own invite function, per the same file.
 
-- **First, because it has never been observed passing:** with a connection made and a tool call working, revoke it in Connected apps and make the same call again with the same unexpired token. It must answer `401` — without restarting the server, and without waiting for the token to run out. If it answers `200`, the Revoke button is lying and nothing else on this list matters yet.
+- **First, because the mechanism has been measured but the button has not:** with a connection made and a tool call working, revoke it in Connected apps and make the same call again with the same unexpired token. It must answer `401` — without restarting the server, and without waiting for the token to run out. If it answers `200`, the Revoke button is lying and nothing else on this list matters yet.
 - The same for a deleted account: a token issued to it is refused on the next call.
 - The endpoint answers at `/mcp` — `src/app/mcp/route.ts` — and there is no `src/app/api/mcp/` directory left behind.
 - An unauthenticated `POST /mcp` returns `401` with a `WWW-Authenticate` header containing `resource_metadata`, not a `200`.
