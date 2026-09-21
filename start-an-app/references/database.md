@@ -31,7 +31,9 @@ pnpm add -D @types/pg
 
 ## Configure
 
-Schema lives at `src/lib/db/schema.ts` — define tables from the user's interview nouns (plus auth tables later if sign-in is chosen).
+Schema lives at `src/lib/db/schema.ts` — define tables from the user's interview nouns.
+
+**If the app has accounts, this step sets up the connection, the scripts and the migration path, and stops there. Tables that point at a user are defined after `references/auth.md` has generated `auth-schema.ts`**, so the owner column and its foreign key are part of the table's first `CREATE TABLE`. "Who owns a row" below has the reason, which was measured. Tables with no column pointing at a person (a lookup list, a settings row) can be defined now. An app with no accounts defines all of its tables now.
 
 ### SQLite branch
 
@@ -294,7 +296,8 @@ export default defineConfig({
   schema: "./src/lib/db/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
-  dbCredentials: { url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL! },
+  // || not ??: a variable that exists but is empty must not win.
+  dbCredentials: { url: process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL || "" },
 });
 ```
 
@@ -372,7 +375,7 @@ pnpm db:generate   # writes a reviewable SQL file into ./drizzle
 pnpm db:migrate    # applies pending migrations
 ```
 
-Read what `db:generate` produced before applying it. Drizzle cannot always tell a rename from a drop-plus-add, and the generated SQL is where that shows up — a `DROP COLUMN` you didn't intend is obvious in the file and invisible if you skip it. Because `build` migrates first, generate and read the SQL before building too: a build reached with an ungenerated schema edit outstanding is the wrong moment to find out.
+Read what `db:generate` produced before applying it. Drizzle cannot always tell a rename from a drop-plus-add, and the generated SQL is where that shows up — a `DROP COLUMN` you didn't intend is obvious in the file and invisible if you skip it. Look for the opposite fault too: a `REFERENCES` with no `ON DELETE` after it, where the schema declared one ("Who owns a row" below has the measured case). Because `build` migrates first, generate and read the SQL before building too: a build reached with an ungenerated schema edit outstanding is the wrong moment to find out.
 
 Commit the `drizzle/` folder. It is source code, not build output.
 
@@ -460,12 +463,36 @@ export const hikes = sqliteTable("hikes", {
 
 Tables that reference *your* tables use the matching type: `uuid` on Postgres, `text` on SQLite.
 
+### Who owns a row: three cases
+
+The `hikes` examples above show the first case. It is not the only one, and the interview settles which applies before any table is written. `references/pages.md` applies the same three cases to the queries.
+
+| Case | Column | Every query is scoped by | `onDelete` on the column pointing at a person |
+|---|---|---|---|
+| **Private to each user** (my hikes, my recipes) | `userId`, `notNull` | the session user's id | `"cascade"`: the rows go when the account goes |
+| **Shared by a team** (a company's jobs, customers, stock) | no owner column. Columns such as `assignedTo` or `createdBy` say who did what | **role**: a plumber sees the jobs assigned to them, the office sees all of them | `"set null"` or `"restrict"`, **never `"cascade"`** |
+| **No accounts** | no `userId` column at all | nothing | not applicable |
+
+**Shared data and `cascade` do not mix.** With `cascade` on `assignedTo`, deleting the account of someone who has left the company deletes every job they ever worked on, and the team's history goes with them. `"set null"` keeps the row and leaves the column empty, so the column must be nullable. `"restrict"` refuses the deletion until the rows are reassigned; choose it where a row without a person makes no sense, and have the app say why the deletion was refused. `references/settings.md` builds account deletion and depends on this choice being right.
+
+The shared-team case has not been built with this skill; the rule comes from how foreign keys behave, not from a finished app. Prove it with the role probe in `references/verify.md`.
+
+**Define user-owned tables after auth has generated `auth-schema.ts`, not before.** Measured on the SQLite branch: a table created without its owner column, then given one in a later migration, got `ALTER TABLE ... ADD ... REFERENCES user(id)` with **no `ON DELETE` clause**. The migration reported success. `PRAGMA foreign_key_list` on the table showed `NO ACTION`. Deleting an account later either fails on the foreign key or leaves rows with no owner, depending on whether foreign keys are enforced on that connection. When the column is in the first `CREATE TABLE`, the clause is written correctly. The same order is used on Postgres; the fault was not measured there.
+
+If a table already exists without the column, do not trust the `ALTER`. On SQLite the dependable fix is a new table with the right foreign key, the rows copied across, the old table dropped and the new one renamed, all in one hand-written migration (`drizzle-kit generate --custom`). Then check `foreign_key_list` again.
+
+**Every time a migration adds a foreign key, search the generated SQL for `REFERENCES` and check each one carries the `ON DELETE` you declared.** A missing clause is silent: nothing errors until someone deletes an account.
+
+**Run one-off scripts with `tsx`.** `pnpm add -D tsx`, then `pnpm exec tsx scripts/check.ts`. Measured: plain `node` fails on this project's TypeScript imports, which have no file extension. On the Postgres branch the script also needs the connection string, and nothing loads `.env` or `.env.local` for it the way Next does. Load them before the database module is imported: imports run before any other line in the file, so a `config()` call written below `import { db }` runs too late and the guard in `src/lib/db/index.ts` throws. Passing the files on the command line avoids the ordering problem (`pnpm exec tsx --env-file=.env --env-file=.env.local scripts/check.ts`, and leave out a file that does not exist). That command line was not run during the measured build, which was on SQLite and needs no variables; confirm it on the first script.
+
 ## Verify
 
-- `pnpm db:generate` produces a migration file in `drizzle/`, and `pnpm db:migrate` applies it without errors. No schema was ever pushed.
-- Every table you defined has a UUID primary key that fills itself in — inserting a row without passing an `id` works — and `auth-schema.ts` is untouched from what the Better Auth CLI generated.
+- `pnpm db:generate` produces a migration file in `drizzle/`, and `pnpm db:migrate` applies it without errors. No schema was ever pushed. Where every table waits for auth, there is nothing to generate yet, and `db:migrate` may complain that it has no migrations folder to read. That is expected; this item and the `pnpm build` item below are ticked after `references/auth.md` has generated the first migration.
+- Every table you defined has a UUID primary key that fills itself in — inserting a row without passing an `id` works — and, once auth has run, `auth-schema.ts` is untouched from what the Better Auth CLI generated.
 - `package.json` has `"build": "pnpm db:migrate && next build"`, and `pnpm build` completes — running migrations first, then the Next.js build.
-- Inserting and reading one row through `db` works (a quick script or the first page using a table is fine).
+- Inserting and reading one row through `db` works, from a script run with `tsx`. Use a table that has no owner column. **If every table in the app belongs to a user, none of them exists yet at this step**: prove the connection with `select 1` through `db` instead (`db.run` on SQLite, `db.execute` on Postgres), and either defer the row test until the user-owned tables exist, or use a throwaway table that the same script creates and drops with plain SQL. Keep a throwaway table out of `schema.ts` and out of the migrations, where it would stay in the history. Do not create an account to own a test row either: the first account belongs to the real person, in Step 6.
+- After auth has run and the user-owned tables are migrated: every `REFERENCES` in the generated SQL carries the `ON DELETE` the schema declared. On SQLite, `PRAGMA foreign_key_list(<table>)` shows `CASCADE` for private data and `SET NULL` or `RESTRICT` for shared data, never `NO ACTION`.
+- Deferred to Step 6, after the user has signed up: a row created through the app carries the right owner (private data), or is visible to the right roles (shared data).
 - Where the app has a no-overlap rule: a script that inserts an overlapping row directly is refused with `23P01`, and the app shows a sentence for it rather than a stack trace.
 - `pnpm db:studio` opens and shows the tables (optional, good demo for the user).
 - **Option A only:** `.env.local` contains both `DATABASE_URL` and `DATABASE_URL_UNPOOLED`, and the Neon dashboard shows the migration landed on the `vercel-dev` branch — not on `main`. If it landed on `main`, the development branch was never enabled; fix that before any real data exists.

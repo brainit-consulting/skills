@@ -49,60 +49,88 @@ POLAR_PRODUCT_ID=<from step 3>
 
 ### Configure
 
-Extend `src/lib/auth.ts` — this replaces nothing, it adds a plugin alongside the existing config:
+Extend `src/lib/auth.ts`. What follows is a **fragment to add to the file `references/auth.md` wrote**, not a replacement for it: the role field, the first-account hook, the email wiring and every plugin already there stay exactly as they are.
 
 ```ts
-import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
+// src/lib/auth.ts — add these imports beside the existing ones
 import { polar, checkout, portal, webhooks } from "@polar-sh/better-auth";
 import { Polar } from "@polar-sh/sdk";
-import { db } from "@/lib/db";
+import { recordPaidState } from "@/lib/billing"; // written below, under "Both branches"
 
-const polarClient = new Polar({
-  accessToken: process.env.POLAR_ACCESS_TOKEN!,
-  server: process.env.POLAR_SERVER === "production" ? "production" : "sandbox",
-});
+// Add above the betterAuth({ ... }) call
+const polarToken = process.env.POLAR_ACCESS_TOKEN;
+const polarProductId = process.env.POLAR_PRODUCT_ID;
+const polarWebhookSecret = process.env.POLAR_WEBHOOK_SECRET;
 
-export const auth = betterAuth({
-  database: drizzleAdapter(db, { provider: "sqlite" }), // or "pg"
-  emailAndPassword: { enabled: true },
-  plugins: [
-    polar({
-      client: polarClient,
-      createCustomerOnSignUp: true,
-      use: [
-        checkout({
-          products: [{ productId: process.env.POLAR_PRODUCT_ID!, slug: "pro" }],
-          successUrl: "/thanks?checkout_id={CHECKOUT_ID}",
-          authenticatedUsersOnly: true,
+// Empty when the keys are missing, so the app starts without them.
+const paymentsPlugins =
+  polarToken && polarProductId
+    ? [
+        polar({
+          client: new Polar({
+            accessToken: polarToken,
+            server: process.env.POLAR_SERVER === "production" ? "production" : "sandbox",
+          }),
+          createCustomerOnSignUp: true,
+          use: [
+            checkout({
+              products: [{ productId: polarProductId, slug: "pro" }],
+              successUrl: "/thanks?checkout_id={CHECKOUT_ID}",
+              authenticatedUsersOnly: true,
+            }),
+            portal(),
+            ...(polarWebhookSecret
+              ? [
+                  webhooks({
+                    secret: polarWebhookSecret,
+                    // Fires on every subscription change — the reliable source of truth.
+                    onCustomerStateChanged: async (payload) => {
+                      await recordPaidState(payload);
+                    },
+                    // One-off purchases arrive here.
+                    onOrderPaid: async (payload) => {
+                      await recordPaidState(payload);
+                    },
+                  }),
+                ]
+              : []),
+          ],
         }),
-        portal(),
-        webhooks({
-          secret: process.env.POLAR_WEBHOOK_SECRET!,
-          onOrderPaid: async (payload) => {
-            // Mark the customer as paid in the app's own database.
-          },
-          onCustomerStateChanged: async (payload) => {
-            // Fires on every subscription change — the reliable source of truth.
-          },
-        }),
-      ],
-    }),
-  ],
-});
+      ]
+    : [];
+
+export const paymentsConfigured = paymentsPlugins.length > 0;
 ```
 
-`createCustomerOnSignUp: true` means every new account gets a Polar customer automatically, so there is never a "customer not found" branch to write.
-
-Client plugin in `src/lib/auth-client.ts`:
+Then, inside the existing `betterAuth({ ... })` call, add one line to the existing `plugins` array:
 
 ```ts
-import { createAuthClient } from "better-auth/react";
+  plugins: [
+    // ...every plugin already here stays...
+    ...paymentsPlugins,
+    nextCookies(), // must stay last
+  ],
+```
+
+Why it is shaped this way: a missing key must degrade, never crash. There is no `!` on any env value, the Polar client is only constructed when its token is present, and `createCustomerOnSignUp` only exists when the plugin does — so with no keys, sign-up still works and nothing calls Polar. `paymentsConfigured` is derived from the same array the auth config uses, so the pricing page cannot disagree with the server about whether payments are on.
+
+With the plugin present, `createCustomerOnSignUp: true` means every new account gets a Polar customer automatically, so there is never a "customer not found" branch to write.
+
+The conditional plugin list is not yet built with this skill: if TypeScript loses the plugin's endpoint types on `auth.api` because of the conditional, keep the condition and cast the array rather than going back to an unconditional plugin, and prove the missing-keys case with the Verify item below.
+
+Client plugin in `src/lib/auth-client.ts` — again a fragment. **Add** `polarClient()` to the existing `plugins` list and add the two new names to the existing export line; keep every plugin and export already there:
+
+```ts
 import { polarClient } from "@polar-sh/better-auth/client";
 
-export const authClient = createAuthClient({ plugins: [polarClient()] });
-export const { signIn, signUp, signOut, useSession, checkout, customer } = authClient;
+// inside the existing createAuthClient({ plugins: [ ... ] })
+//   polarClient(),
+
+// add to the existing named exports
+//   checkout, customer
 ```
+
+The client plugin is safe to include unconditionally — it only adds method names. What must be conditional is the button: see *Both branches* below.
 
 Adding the plugin can add columns and tables, so regenerate the schema and migrate:
 
@@ -119,7 +147,9 @@ Wire up two buttons:
 
 ### Testing webhooks locally
 
-Polar can only call a public URL, so on `localhost` webhooks stay silent — checkout itself still works end to end. Either deploy first and test webhooks there, or expose the dev server with a tunnel (`pnpm dlx untun@latest tunnel http://localhost:3000`, or ngrok) and use that URL as the webhook endpoint. Say which one you did.
+Polar can only call a public URL, so on `localhost` webhooks stay silent — checkout itself still works end to end. Either deploy first and test webhooks there, or expose the dev server with a tunnel (`pnpm dlx untun@latest tunnel http://localhost:3000`, or ngrok) and use that URL as the webhook endpoint. The port in that command has to be the one the app is actually running on. Say which one you did.
+
+Be plain about what this means: without a tunnel, no webhook reaches `localhost`, so the app's paid state never changes locally however many test payments succeed. Checkout can be proven on a laptop; the paid state can only be proven through a tunnel or on the deployed app.
 
 Sandbox test card: `4242 4242 4242 4242`, any future expiry, any CVC.
 
@@ -150,46 +180,67 @@ STRIPE_PRICE_ID=price_<from step 2>
 
 ### Configure
 
-Extend `src/lib/auth.ts`:
+Extend `src/lib/auth.ts`. This is a **fragment to add to the file `references/auth.md` wrote**, not a replacement for it: the role field, the first-account hook, the email wiring and every plugin already there stay exactly as they are.
 
 ```ts
-import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
+// src/lib/auth.ts — add these imports beside the existing ones
 import { stripe } from "@better-auth/stripe";
 import Stripe from "stripe";
-import { db } from "@/lib/db";
+import { recordPaidState } from "@/lib/billing"; // written below, under "Both branches"
 
-const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!);
+// Add above the betterAuth({ ... }) call
+const stripeKey = process.env.STRIPE_SECRET_KEY;
+const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+const stripePriceId = process.env.STRIPE_PRICE_ID;
 
-export const auth = betterAuth({
-  database: drizzleAdapter(db, { provider: "sqlite" }), // or "pg"
-  emailAndPassword: { enabled: true },
-  plugins: [
-    stripe({
-      stripeClient,
-      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
-      createCustomerOnSignUp: true,
-      subscription: {
-        enabled: true,
-        plans: [{ name: "pro", priceId: process.env.STRIPE_PRICE_ID! }],
-      },
-    }),
-  ],
-});
+// Empty when the keys are missing, so the app starts without them.
+const paymentsPlugins =
+  stripeKey && stripeWebhookSecret && stripePriceId
+    ? [
+        stripe({
+          stripeClient: new Stripe(stripeKey),
+          stripeWebhookSecret,
+          createCustomerOnSignUp: true,
+          subscription: {
+            enabled: true,
+            plans: [{ name: "pro", priceId: stripePriceId }],
+            // The plugin's subscription hooks are where the app's own paid state is written.
+            // Confirm their current names in the check-what's-current step; each one calls
+            // recordPaidState(...) with the user id the subscription refers to.
+          },
+        }),
+      ]
+    : [];
+
+export const paymentsConfigured = paymentsPlugins.length > 0;
 ```
+
+Then, inside the existing `betterAuth({ ... })` call, add one line to the existing `plugins` array:
+
+```ts
+  plugins: [
+    // ...every plugin already here stays...
+    ...paymentsPlugins,
+    nextCookies(), // must stay last
+  ],
+```
+
+Why it is shaped this way: a missing key must degrade, never crash. There is no `!` on any env value, the Stripe client is only constructed when its key is present, and `createCustomerOnSignUp` only exists when the plugin does — so with no keys, sign-up still works and nothing calls Stripe. `paymentsConfigured` is derived from the same array the auth config uses, so the pricing page cannot disagree with the server about whether payments are on.
+
+The conditional plugin list is not yet built with this skill: if TypeScript loses the plugin's endpoint types on `auth.api` because of the conditional, keep the condition and cast the array rather than going back to an unconditional plugin, and prove the missing-keys case with the Verify item below.
 
 If TypeScript complains about a missing or mismatched `apiVersion`, pass the exact version string the installed `stripe` package's types name — don't guess one.
 
-Client plugin in `src/lib/auth-client.ts`:
+Client plugin in `src/lib/auth-client.ts` — again a fragment. **Add** `stripeClient(...)` to the existing `plugins` list and add the new name to the existing export line; keep every plugin and export already there:
 
 ```ts
-import { createAuthClient } from "better-auth/react";
 import { stripeClient } from "@better-auth/stripe/client";
 
-export const authClient = createAuthClient({
-  plugins: [stripeClient({ subscription: true })],
-});
-export const { signIn, signUp, signOut, useSession, subscription } = authClient;
+// inside the existing createAuthClient({ plugins: [ ... ] })
+//   stripeClient({ subscription: true }),
+
+// add to the existing named exports
+//   subscription
 ```
 
 Regenerate the schema — this plugin definitely adds a `subscription` table and a customer id on `user`:
@@ -223,7 +274,9 @@ stripe login
 stripe listen --forward-to localhost:3000/api/auth/stripe/webhook
 ```
 
-It prints a `whsec_...` — that is `STRIPE_WEBHOOK_SECRET` for local development. The deployed app needs a *different* secret, created under **Developers → Webhooks** with the real URL.
+It prints a `whsec_...` — that is `STRIPE_WEBHOOK_SECRET` for local development. The deployed app needs a *different* secret, created under **Developers → Webhooks** with the real URL. The port in the `--forward-to` address has to be the one the app is actually running on.
+
+Without `stripe listen` running, no webhook reaches `localhost`, so the app's paid state never changes locally however many test payments succeed. Checkout can be proven without it; the paid state cannot.
 
 Test card: `4242 4242 4242 4242`, any future expiry, any CVC.
 
@@ -231,11 +284,97 @@ Test card: `4242 4242 4242 4242`, any future expiry, any CVC.
 
 ## Both branches — gating the app
 
-Paying for something has to change something. Read the session server-side and gate the feature the user actually named in the interview:
+Paying for something has to change something. The app keeps its own record of who has paid, the webhook handlers write it, and the server reads it.
 
-- Read subscription state on the server (Better Auth session / the plugin's subscription list), never from a client-side flag a user can flip in devtools.
+Not yet built with this skill: the paid-state design below was desk-checked, never run. Confirm the webhook payload fields and the plugin's hook names in the check-what's-current step, and prove it with the Verify items below.
+
+### The paid state
+
+One app-owned table (a column on an existing per-user table is fine for a single plan). Postgres branch shown; on SQLite use `integer` timestamps, per `references/database.md`. It goes in `src/lib/db/schema.ts`, which is safe here because `auth-schema.ts` already exists — after `pnpm db:generate`, read the SQL and check the `REFERENCES` line carries `ON DELETE cascade`.
+
+```ts
+export const billing = pgTable("billing", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  plan: text("plan").notNull().default("free"), // free | pro — use the app's real plan names
+  status: text("status"), // the provider's own word: active, canceled, past_due...
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+`src/lib/billing.ts`:
+
+```ts
+import "server-only";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { billing } from "@/lib/db/schema";
+
+export type Plan = "free" | "pro";
+
+export async function getPlan(userId: string): Promise<Plan> {
+  const [row] = await db.select().from(billing).where(eq(billing.userId, userId));
+  return row?.plan === "pro" ? "pro" : "free";
+}
+
+export async function setPlan(userId: string, plan: Plan, status?: string) {
+  await db
+    .insert(billing)
+    .values({ userId, plan, status })
+    .onConflictDoUpdate({
+      target: billing.userId,
+      set: { plan, status, updatedAt: new Date() },
+    });
+}
+
+// Called by the webhook handlers in src/lib/auth.ts.
+export async function recordPaidState(payload: unknown) {
+  // 1. Find the Better Auth user id. Polar: the customer's external id, which the plugin
+  //    sets to the user id at sign-up. Stripe: the subscription's reference id.
+  // 2. Decide paid or not from the payload (an active subscription, or a paid order
+  //    for the one-off product).
+  // 3. await setPlan(userId, paid ? "pro" : "free", status);
+  // A payload with no user id is logged and ignored, never thrown — a throw makes the
+  // provider retry the same webhook for days.
+}
+```
+
+No row means free, so nothing has to be written at sign-up and an app whose payment keys are missing treats everyone as free.
+
+- Read the plan on the server with `getPlan(session.user.id)`, never from a client-side flag a user can flip in devtools.
 - Show a real upgrade prompt on the gated page, not a blank screen.
 - Keep the free tier usable — the app should still make sense to someone who never pays.
+
+### Limits live in the shared function, not the page
+
+A plan limit — 5 plants on the free plan — is enforced inside the shared `src/lib/<domain>` function that does the write, because the page is not the only caller. If `references/mcp.md` runs, an agent's tool call goes through the same function, and a limit that only the page checks is a limit an agent walks past.
+
+```ts
+// src/lib/plants.ts
+import { getPlan } from "@/lib/billing";
+
+export class PlanLimitError extends Error {}
+
+export async function createPlant(userId: string, input: NewPlant) {
+  if ((await getPlan(userId)) === "free") {
+    const count = await countPlants(userId);
+    if (count >= 5) throw new PlanLimitError("The free plan holds 5 plants. Upgrade to add more.");
+  }
+  // ...insert...
+}
+```
+
+The server action catches `PlanLimitError` and returns the message with a link to the pricing page; the agent tool returns the same sentence. The page may also hide the Add button at the limit — as a courtesy, not as the check.
+
+### The pricing page, and the page people come back to
+
+- **Pricing page.** A server component reads `paymentsConfigured` from `@/lib/auth`. When it is false the page still shows the plans, and where the Upgrade button would be it says "Payments are not set up yet." — it never renders a button that would call an endpoint that does not exist.
+- **`/thanks`.** Both branches point `successUrl` at it, so create it: `src/app/(dashboard)/thanks/page.tsx`, behind `requireUser()` from `src/lib/auth-guards.ts`. It reads `getPlan()` and says one of two true things — "You're on Pro." or "Payment received. Your plan updates within a minute; refresh this page." The webhook usually lands after the redirect, so the page must not claim the upgrade before the server knows about it.
+
+Pages are written by `references/pages.md`, which runs after this file. If it has not run yet, write the auth fragment, the table and `src/lib/billing.ts` now, and build the pricing page, `/thanks`, the buttons and the gate when the pages exist.
+
+If account deletion is built, `references/settings.md` cancels the subscription in its `beforeDelete` hook, before the rows cascade — a deleted account must not keep being charged.
 
 ## Going to production
 
@@ -243,8 +382,19 @@ At hand-off, tell the user the go-live steps in order: switch the provider out o
 
 ## Verify
 
-- A signed-in user clicks Upgrade and reaches the provider's hosted checkout with the right product and price.
-- Paying with the test card returns to `successUrl` inside the app.
-- The paid state is visible on the server after checkout (a gated page unlocks, or the subscription shows in `pnpm db:studio`).
-- The billing portal opens for a paying user.
-- With payment env vars missing, the app still starts and the upgrade button shows a friendly "billing isn't configured yet" notice instead of crashing.
+Do not create an account to run these. The first account belongs to the real person and is made in Step 6; on a one-owner app a test account would take the owner's seat.
+
+Checked now, with no account:
+
+- `pnpm exec tsc --noEmit` passes, and `grep -rn "process\.env\.[A-Z_]*!" src` finds nothing.
+- The schema was regenerated and migrated, and the `billing` table's generated SQL carries `ON DELETE cascade`.
+- With the payment env vars blank or missing, `pnpm build` passes, the app starts, the sign-in and sign-up pages still load, and — once the pricing page exists — it says payments are not set up yet instead of showing a dead button.
+- Deferred until `references/pages.md` has run: `/thanks` sends a signed-out visitor to sign-in rather than answering 500.
+
+Needs an account, so not run here:
+
+- Deferred to Step 6, after the user has signed up: clicking Upgrade reaches the provider's hosted checkout with the right product and price.
+- Deferred to Step 6, after the user has signed up: paying with the test card returns to `/thanks` inside the app.
+- Deferred to Step 6, after the user has signed up, and only with a tunnel (or `stripe listen`) running or on the deployed app: the webhook arrives, the `billing` row changes, and the gated feature unlocks. If there was no tunnel, say in the hand-off that the paid state has not been proven yet.
+- Deferred to Step 6, after the user has signed up: the plan limit refuses the write from the shared function — at the limit, the server action returns the upgrade message, and so does the agent tool if agent access was built.
+- Deferred to Step 6, after the user has signed up: the billing portal opens for a paying user.

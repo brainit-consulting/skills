@@ -1,6 +1,6 @@
 # Legal pages and cookie consent
 
-Last verified: 2026-08-12
+Last verified: 2026-09-21
 
 **Purpose:** Give the app the pages it actually owes the people who use it — a privacy policy, terms, a cookie notice — and a consent banner only where something genuinely needs consenting to. Which of these apply is worked out from what the app is; it is never put to the user as a question.
 
@@ -14,11 +14,18 @@ Do not reflexively add a privacy policy and a terms page. Everything needed to m
 
 | The app is… | Privacy | Terms | Cookie banner |
 | --- | --- | --- | --- |
-| A personal tool, one user, no sign-up | None — nobody else's data is in it | None — there is no second party to agree with | No |
-| An internal or team tool, invited people only | A short "what this stores and who can see it" note | No, unless the user asks | No |
+| A personal tool, one user ("one owner", or "no accounts" on their own machine) | None — nobody else's data is in it | None — there is no second party to agree with | No |
+| An internal or team tool, invited people only | A short "what this stores and who can see it" note, at `/privacy` | No, unless the user asks | No |
 | A public product other people sign up for | Yes | Yes | Only if something non-essential loads |
 | A public product that takes money | Yes | Yes, plus cancellation and refunds | Only if something non-essential loads |
 | A public content site with no accounts | Only if it collects anything at all — a contact form, a newsletter | No | Only if something non-essential loads |
+| A public site with one author account and a contact form | Yes — about what the form stores, written for the readers | No | Only if something non-essential loads |
+
+**The one-author row is written for readers, who have no account.** The privacy page says what the contact form keeps (name, email address, the message), where it goes and how to ask for it to be removed. The sign-in disclosure from `references/auth.md` is about the author only: say in one sentence that the site has a single author account and visitors cannot create one. It must not tell readers that their email address and password are held, because they are not.
+
+**The team-tool note lives at `/privacy`**, answers `200` signed out, and is linked from the signed-out screen (the sign-in page), since an invited person should be able to read it before accepting. It is a few short paragraphs, not a policy: what the tool stores, who on the team can see what, and who to ask.
+
+**Data about people who are not users.** A team tool often holds other people's details — a company's customers' names, addresses, photos of their homes. Those people never see this app and agreed to nothing in it. The build does not decide what the owner owes them; that depends on where the business operates and what it already tells its customers. One hand-off line says so plainly: "This app stores your customers' details. What you need to tell them about that is between you and them, and nothing built here covers it."
 
 A hiking journal for one person does not need a terms of service, and generating one is the same failure as generating a pricing table for it. **The absence is the deliverable in that row** — say so on the build sheet in one line ("nothing legal needed — it's just you, and nothing here tracks anyone") so the user reads a decision rather than an oversight.
 
@@ -42,7 +49,7 @@ A banner is **not** owed for:
 - The Better Auth session cookie. Somebody asked to sign in; the cookie is how that request is honoured.
 - A CSRF token, a theme choice, a locale, a dismissed-notice flag.
 - Payment checkout that happens on the provider's own domain, which is their disclosure to make, not the app's.
-- `next/font/google`, which `references/stack.md` sets up. It downloads the font at build time and serves it from the app's own domain, so nothing reaches Google from a visitor's browser. The name misleads; the behaviour is first-party.
+- `next/font/google`, which `references/design.md` sets up. It downloads the font at build time and serves it from the app's own domain, so nothing reaches Google from a visitor's browser. The name misleads; the behaviour is first-party.
 - Anything that only ever runs on the server. Resend, Inngest, OpenRouter and the database are all sub-processors the privacy page has to name, and none of them set a thing in anybody's browser. **Disclosure and consent are different obligations** — confusing them is how an app ends up with a banner asking permission for its own back end.
 
 The stack this skill builds loads none of the first list. **So most apps built here get no banner, and that is the correct outcome rather than a gap.** A banner over nothing but a session cookie is a dead control: the Reject button either lies or breaks sign-in, and consent theatre is the pattern regulators have been fining, not the one they reward. If a banner is skipped, say why in one line at hand-off, and say what would change it — "add analytics later and this needs one".
@@ -106,7 +113,7 @@ Reopening it is a footer link and a settings section, not a one-time event — `
 
 Routes live in their own group, `src/app/(legal)/`, so they share a plain readable layout and stay reachable signed out. Never inside the dashboard group.
 
-- `/privacy` — always, where the table said yes.
+- `/privacy` — always, where the table said yes. The team tool's short note uses this same route.
 - `/terms` — where the table said yes.
 - `/cookies` — only where a banner was built. Otherwise the two paragraphs it would contain go in a "what we store" section of the privacy page, and the route doesn't exist.
 
@@ -116,7 +123,8 @@ Write them from the branches that actually ran. Each one that did carries someth
 | --- | --- |
 | Database, always | what the app stores, in the app's own nouns, and that it lives in its own database |
 | `references/auth.md` | that an email address and a password hash are held, and a session cookie is set |
-| `references/email.md` | that Resend delivers the mail, and that a receipt or a password reset is not marketing |
+| `references/email.md` | that Resend delivers the mail, and that a receipt or a password reset is not marketing. Also that the app keeps its own copy of every message it sends, in full, in `email_log`, and that nothing prunes it |
+| `references/email.md`, contact form | that a visitor's name, email address and message are mailed to the owner through Resend, and that the app keeps the full message in `email_log` as well, with nothing pruning it |
 | `references/storage.md` | that uploads sit in the project locally and in Vercel Blob once deployed |
 | `references/payments.md`, Polar | that Polar is **merchant of record** — the sale is a contract with Polar, and the app never sees a card |
 | `references/payments.md`, Stripe | that Stripe processes the payment and the app never sees a card |
@@ -132,10 +140,11 @@ Whatever the app's own words are for its nouns, the legal pages use them too. A 
 
 Read this list against the pages before moving on. Each entry is a sentence that is only allowed if something in the build performs it:
 
-- **Deletion.** Allowed wherever there is sign-in — `references/settings.md` builds "delete my account", and deletion there is immediate and permanent. Describe what it actually removes, including the uploads and the subscription if those branches ran, and do not invent a grace period it doesn't have.
-- **Export.** Allowed wherever there is sign-in, and only there — `references/settings.md` builds **Download my data** as a real server action returning their own rows. Say it exists and where it is. On an app with no accounts there is nothing to export and nothing to claim.
+- **This step runs before `references/settings.md`**, so deletion and export do not exist yet when these pages are written. Describe them by what settings.md will build for *this* app's access shape and email choice, as set out in the next two entries, and re-read both sentences against the finished settings page in Step 5.
+- **Deletion.** Allowed wherever there is sign-in — `references/settings.md` builds "delete my account", and deletion there is permanent with no grace period. How it is confirmed depends on the email choice: with email, by a link sent to their address; on an app with no email, straight away behind their typed email address and password. Write the one that applies. Describe what it actually removes, including the uploads and the subscription if those branches ran. On a shared team tool, deleting a member removes their account and **not** the team's records, which stay with the team; say that, because "deleting your account deletes your data" is false there. On a one-owner app there are no other account holders to promise anything to.
+- **Export.** Allowed wherever there is sign-in, and only there — `references/settings.md` builds **Download my data** as a route handler at `/settings/export` that returns their own rows as a file. Say it exists and where it is. On an app with no accounts there is nothing to export and nothing to claim. A contact-form visitor has no export; they have the contact address.
 - **Rectification** — "you can correct your data". Only for the fields the app actually lets somebody edit. The profile is editable; whatever the interview left read-only is not.
-- **Retention periods.** Only if something enforces one. "We keep logs for 90 days" is false in an app whose activity log is never pruned.
+- **Retention periods.** Only if something enforces one. "We keep logs for 90 days" is false in an app whose activity log is never pruned. The same goes for `email_log`: it holds full message bodies and nothing removes them, so the honest sentence is "we keep a copy of the messages we send until we delete them by hand", not a period.
 - **Security claims.** "Encrypted in transit" is true and safe. "Encrypted at rest", SOC 2, ISO, HIPAA, or "bank-level security" are claims about infrastructure nobody has provisioned yet.
 - **An age limit.** Only if there is a check. A minimum-age clause with no field asking for one is a rule the app breaks itself.
 - **Anyone to contact.** Only the address in `src/lib/legal.ts`, and only once it is set — see below.
@@ -176,6 +185,11 @@ This is the one place in the app where a hardcoded colour is right rather than a
 - The decision matches the table, and it was stated on the build sheet rather than asked as a question.
 - Signed out, every page the table called for answers, and every page it didn't is absent — no orphan `/terms` on a personal tool.
 - Every page that exists is linked from the footer, and every footer link resolves.
+- Team tool: `/privacy` answers `200` signed out and is linked from the signed-out screen.
+- One-author site: the privacy page talks about the contact form and nowhere tells a reader their password or account is held.
+- Where `email_log` exists, the privacy page says full messages are kept and that nothing prunes them; with a contact form, that it holds visitors' messages.
+- Where the app stores details of people who are not users, the hand-off carries the one line saying the build does not settle what the owner owes them.
+- The deletion and export sentences match this app's access shape and email choice. Deferred until `references/settings.md` has run: read them against the real settings page and correct whichever is wrong.
 - Every branch that ran appears in the privacy page, in the app's own words for its nouns.
 - Nothing on any of them claims deletion, export, rectification, retention, security, or an age limit that the code doesn't perform.
 - Every unset field in `src/lib/legal.ts` shows as a marker on the page and is on the hand-off list. No `[Your …]` placeholder anywhere.

@@ -1,6 +1,6 @@
 # In-app help guide
 
-Last verified: 2026-07-27
+Last verified: 2026-09-21
 
 **Purpose:** A `?` in the navbar opens a guide that explains the app in the owner's own words. Built for the people who will use the app but never sat in this interview — the receptionist hired next spring, the volunteer who took over the roster, the customer who signed up at 11pm.
 
@@ -13,6 +13,7 @@ Last verified: 2026-07-27
 | Their customers | **Yes** |
 | Their staff | **Yes** — this is where it matters most |
 | Just them | No. They just spent twenty minutes explaining the app to you; they don't need it explained back |
+| Strangers reading a public content site (a blog, a portfolio, a directory with one author) | **No.** Readers need no manual to read a page, and the one author is "just them". If the author side ever gains more people, build it then, for them only |
 
 Put it on the build sheet as a line they can decline, not as a question:
 
@@ -49,6 +50,7 @@ export type HelpChapter = {
   intro: string;        // one or two sentences
   steps?: string[];     // numbered, only where order matters
   notes?: string[];     // the "you can also…" and the gotchas
+  audience?: string[];  // roles that see this chapter; leave out for everyone
 };
 
 export const helpChapters: HelpChapter[] = [
@@ -59,6 +61,8 @@ export const helpChapters: HelpChapter[] = [
   },
 ];
 ```
+
+**`audience` is for apps where people with different roles share one app.** The values are the app's real role values from `references/auth.md` — `"user"` and `"admin"` on most apps, the app's own list (`"owner"`, `"office"`, `"plumber"`) where the interview produced more. A plumber does not need the chapter on invoicing, and a guide that opens on things a person cannot do teaches them to close it. Read the role from the session on the server, filter `helpChapters` there, and pass the filtered list to the dialog; a `?help=<id>` link to a chapter the reader does not get opens on the first chapter instead. This is about relevance, not secrecy: the text ships in the bundle, so nothing confidential goes in a chapter. Filtering by role has not yet been built with this skill; prove it with the Verify item below.
 
 Deep-link with `?help=<id>` so the app can point at a chapter from an empty state — *"nothing here yet. [How logging a hike works]"* is worth more than any tooltip.
 
@@ -103,7 +107,7 @@ Both are invisible until measured: the window looks roughly right and behaves su
 
 ## On a phone, none of the above
 
-Below `md`, render a full-screen sheet with no drag and no resize. Touch-dragging a window fights the scroll gesture and the scroll gesture should win. A `?` that opens a small draggable panel on a 390px screen is worse than no help at all.
+Below `md`, render a full-screen sheet with no drag and no resize. Use shadcn's `sheet` component, which `references/stack.md` adds up front with the rest — do not run `shadcn add` for it here. Touch-dragging a window fights the scroll gesture and the scroll gesture should win. A `?` that opens a small draggable panel on a 390px screen is worse than no help at all.
 
 ## Keyboard and screen readers
 
@@ -122,6 +126,8 @@ A guide that describes the app as it was on day one is worse than none, because 
 
 ## Verify
 
+Where the navbar sits behind sign-in, none of this can be seen until an account exists, and no account is created before Step 6. In that case check here only that the project type-checks and that every verb has a chapter in `chapters.ts`; each remaining item then reads "Deferred to Step 6, after the user has signed up".
+
 - `?` in the navbar opens the guide; Esc closes it; focus lands back on the `?` button.
 - Every verb from the interview has a chapter, and every chapter is in the owner's language — no "click the button to submit the form".
 - Move and resize the window, close it, reopen it: it comes back where it was left.
@@ -129,3 +135,4 @@ A guide that describes the app as it was on day one is worse than none, because 
 - Save a large box, then narrow the browser to a laptop width and reopen: the guide is fully on screen.
 - At 390px wide it is a full-screen sheet, scrolls normally, and has no drag handles.
 - An empty state somewhere links into a chapter with `?help=<id>` and opens on that chapter.
+- Where chapters carry an `audience`: deferred to Step 6, after the user has signed up and, on an invited team, after a second role exists — each role sees its own chapters and not the others', and a chapter with no `audience` shows for everyone.

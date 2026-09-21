@@ -1,14 +1,16 @@
 # Design system (DESIGN.md)
 
-Last verified: 2026-07-27
+Last verified: 2026-09-21
 
-**Purpose:** Decide what the app looks like *once*, write it down as `DESIGN.md` at the project root, and have every page built afterwards obey it. Optional — but when the user has an existing site, a brand, or a look in mind, this is what stops the result reading as "shadcn defaults with their words in it".
+**Purpose:** Decide what the app looks like *once*, write it down as `DESIGN.md` at the project root, and have every page built afterwards obey it. This is what stops the result reading as "shadcn defaults with their words in it" — most of all when the user has an existing site, a brand, or a look in mind, and still when they have none.
 
 Format and anti-pattern rules are adapted from [taste-skill](https://github.com/Leonxlnx/taste-skill) (MIT, © Leonxlnx) — specifically its `stitch-skill` `DESIGN.md` export shape and the three dials. This file stands alone; taste-skill does not need to be installed. Pairing them is covered at the bottom.
 
 ## When this runs
 
-Always. Every app gets a `DESIGN.md`, short if the user gave no direction. The interview's design question decides which of the three ways in applies, strongest first:
+Always, and early: right after `references/stack.md` has made the base project and before the database, sign-in or any page. Sign-in, sign-up, the front door and the dashboard are all built later and inherit what this step puts into `globals.css` and `layout.tsx`, so nothing has to be restyled afterwards.
+
+Every app gets a `DESIGN.md`, short if the user gave no direction (the short form is defined under "Writing DESIGN.md"). The interview's design question decides which of the three ways in applies, strongest first:
 
 | The user said | Do this |
 | --- | --- |
@@ -121,12 +123,20 @@ colour anywhere else.
 | --- | --- | --- | --- |
 | `--background` | | | page surface |
 | `--foreground` | | | primary text |
-| `--card` | | | raised surface |
+| `--card` / `--card-foreground` | | | raised surface and the text on it |
+| `--popover` / `--popover-foreground` | | | menus, selects, dialogs — normally the same as card |
 | `--muted` / `--muted-foreground` | | | secondary text, quiet fills |
+| `--secondary` / `--secondary-foreground` | | | the quiet button — normally the muted fill with foreground text |
+| `--accent` / `--accent-foreground` | | | hover and selected rows in menus — normally the muted fill, **not** the brand colour |
 | `--border` | | | 1px structure |
+| `--input` | | | field outlines — normally the same as border, or one step darker |
+| `--ring` | | | focus outline — normally the primary |
 | `--primary` / `--primary-foreground` | | | the app's colour — primary actions only |
 | `--destructive` | | | delete, danger |
 | `--radius` | | | corner radius |
+
+Dark column: fill it only if this app has dark mode. Otherwise write "light only" here
+once and leave the column empty.
 
 ## 2. Typography
 - **Display:** <family, weights, tracking, leading, clamp() scale>
@@ -160,6 +170,32 @@ Where each of the above came from, what was substituted and why, and an explicit
 that no assets, copy, or CSS were copied from the source.
 ```
 
+### The short form, for a user who gave no direction
+
+Short does not mean skipped. Four sections are required in full, because they are the ones the build reads back:
+
+- **1 Tokens** — every row of the table, with real values.
+- **2 Typography** — the families actually loaded.
+- **7 Banned** — the default list below, carried over.
+- **8 Provenance** — one line: "no reference; direction chosen from the brief".
+
+Sections **3 to 6 are one line each** ("Flat: 1px borders, no shadows, cards only for grouped forms"). The header lines — source, design read, dials — stay. That is a `DESIGN.md` of about forty lines, and it is enough.
+
+### The table covers every token shadcn writes
+
+shadcn's `globals.css` holds more tokens than the eight or so that carry the look. Measured on the real build: following a table with only the eight core rows left the rest on stock greys, and left a blue sidebar token in the file. So:
+
+- **Give every row in the table a value.** The extra tokens rarely need a new colour; map them to the core set as the Role column says, and write the mapped value in the cell.
+- **Delete the `--chart-*` and `--sidebar-*` tokens if the app has no charts and no sidebar** — from `:root`, from `.dark`, and their `--color-chart-*` / `--color-sidebar-*` lines in the `@theme` block. A token nobody set is a stock colour waiting to appear. If a chart or a sidebar component is added later, put them back and give them rows here.
+- **Dark mode is a decision, not a default.** The `.dark` block does nothing until something sets the `dark` class, and nothing in this skill does. Build light only unless the user asked for dark or their reference site has it; record which in section 1. If it is wanted, fill the Dark column and say in section 6 how it switches (`prefers-color-scheme`, or a toggle). `references/pages.md` builds the switch.
+
+### Fonts: two things the generated files get wrong
+
+- The generated `globals.css` contains `--font-sans: var(--font-sans);` inside `@theme inline` — a variable defined as itself (seen on the real build). It resolves to nothing useful, so the font named in section 2 never reaches the page through it.
+- The fix: in `src/app/layout.tsx`, give each `next/font` font a `variable` whose name is **not** one of the theme's own (`--app-font-body`, `--app-font-display`), put those variable classes on `<html>`, and map them in `@theme inline`: `--font-sans: var(--app-font-body);`, plus a `--font-display: var(--app-font-display);` line if there is a display face. The scaffold's own font variables go when its fonts go.
+
+The mapping above has not been run as written. Prove it with the Verify item that reads the computed `font-family`.
+
 ### The default banned list
 
 Carry these into section 7 unless the brand contradicts one. They are the difference between "designed" and "generated":
@@ -185,8 +221,8 @@ The test: would changing it make the app stop looking like *them*? Then keep it.
 
 Writing `DESIGN.md` and then ignoring it is worse than not writing it. Concretely:
 
-1. **Immediately after writing it,** apply section 1 to `src/app/globals.css` (both `:root` and `.dark`) and section 2 to `src/app/layout.tsx`. Do this before any page exists, so every component inherits it for free.
-2. `references/pages.md` builds the front door and dashboard **from this file** — it defers to `DESIGN.md` wherever the two overlap.
+1. **Immediately after writing it,** apply section 1 to `src/app/globals.css` (`:root` always; `.dark` only if this app has dark mode) and section 2 to `src/app/layout.tsx`, including the `@theme` font mapping above. Do this before any page exists, so every component inherits it for free.
+2. `references/auth.md` builds sign-in, sign-up and the header, and `references/pages.md` builds the front door and dashboard, **from this file** — both defer to `DESIGN.md` wherever they overlap with it.
 3. Every shadcn component added later gets checked against sections 3 and 6, and customised once, in `src/components/ui`, rather than per-page.
 4. At hand-off, tell the user `DESIGN.md` exists and that changing a colour there and re-applying section 1 restyles the whole app.
 
@@ -202,9 +238,10 @@ If it's installed, the division of labour is: **`DESIGN.md` owns the facts** (th
 
 ## Verify
 
-- `DESIGN.md` exists at the project root, and every token table cell has a real value — no blanks, no placeholders.
-- `src/app/globals.css` matches section 1 in **both** `:root` and `.dark`, and the app is legible in both.
-- The font in section 2 is actually loaded in `layout.tsx` — not just named in the doc.
-- No component sets a colour outside the tokens. Grep for hex codes in `src/` and expect none.
+- `DESIGN.md` exists at the project root with sections 1, 2, 7 and 8 in full, and every Light cell in the token table has a real value — no blanks, no placeholders. The Dark column is filled only if the app has dark mode.
+- `src/app/globals.css` matches section 1 in `:root`. No token in it still holds a stock shadcn value: read the whole block, the popover, secondary, accent, input and ring rows included. There are no `--chart-*` or `--sidebar-*` tokens unless the app has charts or a sidebar.
+- If the app has dark mode: `.dark` matches section 1 too, something actually sets the class, and the app is legible in both. If it does not, `DESIGN.md` says "light only".
+- The font in section 2 is actually loaded in `layout.tsx` — not just named in the doc — and reaches the page: with the dev server running, `getComputedStyle(document.body).fontFamily` names it. `globals.css` has no `--font-*` variable defined as itself.
+- No component sets a colour outside the tokens. Grep for hex codes in `src/` and expect none, with three exemptions: `src/emails/**` and the Open Graph image, which are rendered outside the page and cannot read CSS variables (copy the values from section 1 into them and say so in a comment), and the one marker in `src/components/legal-blank.tsx`, which `references/legal.md` makes clash on purpose.
 - If a URL was used: `DESIGN.md` names it, records any font substitution, and no logo, image, copy or CSS from it exists in the project.
 - Someone reading `DESIGN.md` and someone looking at the app would describe them the same way.

@@ -1,6 +1,6 @@
 # Public documentation
 
-Last verified: 2026-08-13
+Last verified: 2026-09-21
 
 **Purpose:** A small set of public pages that explain the product to someone who has not signed up yet, or who is signed out and looking for an answer, readable without signing in, living in the same project and wearing the same design as everything else.
 
@@ -47,7 +47,9 @@ Link them from the header and the footer both. Someone reading the landing page 
 
 ## Wiring MDX
 
-MDX is markdown that can render the app's own components, which is what stops the pages looking like a different website. It needs the MDX packages, a `next.config` that accepts `.mdx` as a page extension, and one component-mapping file. Step 2's research supplies the current package names and config shape — the wiring below is the arrangement, not the API.
+MDX is markdown that can render the app's own components, which is what stops the pages looking like a different website. It needs the MDX packages, a `next.config` that accepts `.mdx` as a page extension, and one component-mapping file. Step 2's research supplies the current package names and config shape — the wiring below is the arrangement, not the API. If the research brief came back without the MDX package names, go back and ask for them; do not guess them here.
+
+**The packages are installed up front, with everything else**, in the single install `references/stack.md` does right after the base project, before any pages are written in parallel. Two builders running `pnpm add` at the same time fight over the lockfile. If this step finds the MDX packages missing, stop the parallel work, install them once, and carry on. The `next.config` change needs a dev-server restart to take effect.
 
 **A page is a file, exporting its own metadata:**
 
@@ -83,9 +85,10 @@ export const docs: Doc[] = [
 ];
 ```
 
-The sidebar renders it grouped, in this order. `references/seo.md` runs last and creates `src/lib/site.ts`. That file does not exist yet, so do not create it here. Export `docs` from `src/lib/docs.ts` in a shape it can spread, and seo will feed the same list into the sitemap and `llms.txt` without a second list, like this:
+The sidebar renders it grouped, in this order. `references/seo.md` runs last and creates `src/lib/site.ts`. That file does not exist yet, so do not create it here. Export `docs` from `src/lib/docs.ts` in a shape it can spread, and seo will feed the same list into the sitemap and `llms.txt` without a second list. This is what seo will write in **its** file, shown here only so the shape of `docs` is right:
 
 ```ts
+// src/lib/site.ts — written later by references/seo.md, not by this step
 export const publicPages: PublicPage[] = [
   { path: "/", title: site.name, summary: site.description },
   ...docs.map((d) => ({ path: `/docs/${d.slug}`, title: d.title, summary: d.summary })),
@@ -135,11 +138,11 @@ Say these out loud rather than leaving them as gaps:
 
 - Signed out, `/docs` and every page in the manifest answer `200` — not a redirect to sign-in.
 - Every entry in `src/lib/docs.ts` has a file, and every `page.mdx` under `(docs)` has an entry.
-- Every page documents something that exists: follow one page's instructions against the running app and confirm each named control is really there.
+- Every page documents something that exists. At this point, check each named control against the page's source. Deferred to Step 6, after the user has signed up: follow one page's instructions against the running app and confirm each named control is really there.
 - No page describes anything on the sheet's *not in version one* list.
 - Only branches that ran have pages — no billing page without payments, no uploads page without uploads.
-- Every doc page appears in the sitemap and in `llms.txt`, via `publicPages`.
+- There is no `src/lib/site.ts` written by this step. Deferred until `references/seo.md` has run: every doc page appears in the sitemap and in `llms.txt` (where the app has one), via `publicPages`.
 - The grep above is clean: no keys, no real addresses, no internal hosts, no admin screens.
 - The pages use the app's own nouns and verbs, matching the landing page and the legal pages.
 - Docs are linked from both the header and the footer, and every link in them resolves.
-- The pages render in light and dark mode and at a narrow viewport, like the rest of the app.
+- The pages render at a narrow viewport like the rest of the app, and in dark mode too where `DESIGN.md` called for one.

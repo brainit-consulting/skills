@@ -1,6 +1,6 @@
 # Proving it works
 
-Last verified: 2026-08-11
+Last verified: 2026-09-21
 
 **Purpose:** Turn the end of the build from a list the agent agrees with into commands that either pass or don't, and then look at the result with eyes that didn't build it. Everything before this file is construction. This is the only file that asks whether any of it is true.
 
@@ -10,9 +10,11 @@ Commands here are written for a POSIX shell. On Windows use the Bash tool rather
 
 ## Before you run anything
 
-- **Note the current commit.** `git rev-parse HEAD`. The fix rounds are checked against it, so the gate needs a fixed point to diff from.
+- **Note the current commit.** `git rev-parse HEAD`. The fix rounds are checked against it, so the gate needs a fixed point to diff from. This depends on `references/stack.md` having run `git init -b main` with a first commit, and on a commit after each Step 4 step. Measured on a real build: with no commit, `HEAD` is an "unknown revision" and the drift check in step 2 prints `?? drizzle/` whether or not anything changed. If that is what you get, commit the work as it stands now, then start the gate.
 - **Check port 3000.** If something is already listening, it is almost certainly the user's own dev server. **Do not kill it.** Ask them to stop it, or run the read-only probes against it and name the production-mode checks as unperformed.
-- **Postgres branch: check Docker is up** — `pnpm db:up` then `docker compose ps`. If the daemon isn't running, stop here and say so plainly. Every command below fails identically whether the app is broken or Docker is off, and a fix loop that can't tell those apart will rewrite working code.
+- **Use the port the app actually runs on.** Every command below is written for `http://localhost:3000`. If the app serves on another port, put that port in every command, and check `BETTER_AUTH_URL` and `APP_URL` name the same one — a sign-up probe sent to a port the auth config doesn't expect is refused with `Invalid origin`, which reads like a broken app and isn't.
+- **Database option B only (Postgres in Docker): check Docker is up** — `pnpm db:up` then `docker compose ps`. If the daemon isn't running, stop here and say so plainly. Every command below fails identically whether the app is broken or Docker is off, and a fix loop that can't tell those apart will rewrite working code. The hosted default, a local Postgres and SQLite have no `db:up` script and nothing to start: skip this line for them.
+- **Know the access shape.** Steps 7 and 8 run differently for "open sign-up", "one owner", "invited people only" and "no accounts". It is on the build sheet; read it there rather than inferring it from the code.
 
 ## The gate
 
@@ -45,7 +47,7 @@ git status --porcelain drizzle
 
 Two outcomes, meaning very different things:
 
-- **Nothing new** — the schema file and the migration history agree. This is the pass.
+- **Nothing new** — the schema file and the migration history agree. This is the pass. It only means something if `drizzle/` was committed before the gate started: `?? drizzle/` is the whole folder showing as untracked, not a new migration, and it says nothing either way.
 - **A new `.sql` file** — the schema was edited and never generated. **Read it**, as `references/database.md` requires. A `DROP COLUMN`, or a drop-plus-add where a rename was meant, stops the gate and goes to the user. Anything else applies.
 
 ```bash
@@ -90,13 +92,16 @@ Production on purpose: it is the mode `references/ops.md` already asks about, an
 List the app's real pages — every `page.tsx` under `src/app`, with route groups stripped and dynamic segments left out — and ask each one for a status:
 
 ```bash
-for r in / /sign-in /dashboard /settings /settings/system; do
+# <routes> is this app's own list, e.g.  / /sign-in /recipes /settings /settings/system
+for r in <routes>; do
   printf '%-28s %s\n' "$r" \
     "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://localhost:3000$r")"
 done
 ```
 
-**No 500s.** `200`, or `307` to `/sign-in` for anything inside the dashboard group. Keep this output — it is the app's actual surface area, which is the one thing nobody could see before, and the promise-keeping critic is given it verbatim.
+**Build the list from the files, not from habit.** A personal tool with sign-in has no `/dashboard` — its `/` is the app itself, inside the protected group — and an app with no accounts has no `/sign-in`. A route probed because most apps have one answers `404` and tells you nothing.
+
+**No 500s.** `200`, or `307` to `/sign-in` for anything inside the protected group — which on a one-owner personal tool includes `/` itself. **Where there are no accounts and the app is deployed for the public, `404` on the system page is the pass:** `references/ops.md` makes that page development-only there, and this sweep runs in production mode. A `200` means anyone on the internet can read the app's logs. The one exception is a tool that only ever runs on the person's own machine, where ops.md keeps the page available in production mode and `200` is correct. Keep this output — it is the app's actual surface area, which is the one thing nobody could see before, and the promise-keeping critic is given it verbatim.
 
 **Do not blind-probe `route.ts` handlers.** A POST with side effects is not a check. The `.well-known` discovery documents from `references/mcp.md` are the exception and are safe to GET.
 
@@ -121,10 +126,10 @@ grep -rniE '\[your |lorem ipsum|company name\]|example\.com' src/app/\(legal\) s
 **Every app: the title in the tab.** One line, and it catches the single most template-smelling artefact a build can ship:
 
 ```bash
-curl -s http://localhost:3000/ | grep -o '<title>[^<]*'
+curl -sL http://localhost:3000/ | grep -o '<title>[^<]*'
 ```
 
-`Create Next App` is a failure, not a note.
+`-L` follows redirects, and it matters: where `/` is protected, a signed-out request is answered with a redirect rather than a page, so the grep can come back empty and look like a pass. With `-L` it reads the sign-in page's title, which is the first tab a stranger sees. `Create Next App` is a failure, not a note — and so is no output at all.
 
 **Discoverability, whichever branch ran.** `references/seo.md` builds one of two opposite things, so check the one this app was meant to get:
 
@@ -149,17 +154,21 @@ grep -rniE 'sk-|pk_|api[_-]?key|postgres://|localhost:[0-9]|\.vercel\.app' src/a
 
 Then confirm the manifest and the files agree: every entry in `src/lib/docs.ts` has a `page.mdx`, and every `page.mdx` has an entry. One without the other is a dead sidebar link or a page nobody can reach.
 
-### 7 — Two accounts
+### 7 — Accounts, by access shape
 
-Skip this and the next step entirely if the app has no sign-in.
+Skip this and the next step entirely if the access shape is "no accounts".
 
 **Ask the user to create their own account first**, before any probe account exists:
 
 > Open http://localhost:3000 and sign up — the first account becomes the admin. Tell me when it's done and I'll finish the checks.
 
-This is not politeness. `references/settings.md` makes the first account created the admin, so a fixture signed into an empty database becomes the admin — and deleting it afterwards can leave the user locked out of their own system page. Asking costs thirty seconds, makes both fixtures ordinary users (which is what the isolation probe needs), and puts the human in the loop at the one moment it genuinely helps.
+This is not politeness, and it is the first account this database has ever held: nothing in Step 4 or 5 creates one, and every per-file Verify item that needed a signed-in account was deferred to here. `references/auth.md` makes the first account created the admin, so a fixture signed into an empty database becomes the admin — and on a one-owner app it takes the owner's seat and sign-up closes behind it, locking the person out of their own app. Asking costs thirty seconds, makes every fixture an ordinary user (which is what the isolation probe needs), and puts the human in the loop at the one moment it genuinely helps.
 
-Then work over Better Auth's own REST surface, which is scriptable in a way server actions are not:
+Once they say it's done, run the deferred items from the reference files that ran, then take the path that matches the access shape. There are three, and only the first can use probe accounts freely.
+
+#### Open sign-up — two probe accounts
+
+Work over Better Auth's own REST surface, which is scriptable in a way server actions are not:
 
 ```bash
 JAR=$(mktemp -d)
@@ -171,29 +180,66 @@ for u in a b; do
 done
 
 curl -s -b "$JAR/a.jar" http://localhost:3000/api/auth/get-session
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/dashboard
-curl -s -o /dev/null -w '%{http_code}\n' -b "$JAR/a.jar" http://localhost:3000/dashboard
+# <protected> is one real route inside the protected group, from the step 6 list
+curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:3000<protected>"
+curl -s -o /dev/null -w '%{http_code}\n' -b "$JAR/a.jar" "http://localhost:3000<protected>"
 curl -s -o /dev/null -w '%{http_code}\n' -b "$JAR/b.jar" http://localhost:3000/settings/system
 curl -s -b "$JAR/a.jar" -X POST http://localhost:3000/api/auth/sign-out
 curl -s -b "$JAR/a.jar" http://localhost:3000/api/auth/get-session
 ```
 
-Signed out, `/dashboard` is a `307`; with A's jar it is `200`; after sign-out the session is empty again. That turns three prose assertions into status codes.
+Signed out, the protected route is a `307`; with A's jar it is `200`; after sign-out the session is empty again. That turns three prose assertions into status codes.
 
-**On `/settings/system` as a non-admin: anything other than `200` is the pass, but a `500` is worth noting.** `requireAdmin()` throws, and an uncaught throw in a server component is a stack trace rather than a refusal. That is a gap in `references/settings.md`, not a bug for the fix loop to chase.
+**On `/settings/system` as a non-admin, `404` is the pass.** The page guard `requireAdmin()` calls `notFound()` for a non-admin, so the server refuses without saying the page exists. A `500` is a finding: it means the page is using the guard that throws (`requireAdminAction()`, which belongs in actions and route handlers), and an uncaught throw in a server component is a stack trace rather than a refusal. A `200` is the serious one.
+
+#### One owner — no probe account can exist
+
+Sign-up closed the moment the user's account was created, so there is no second account to probe with, and making one by any other route would be testing an app that doesn't exist. The pass is three things:
+
+**(a) A second sign-up is refused, and the user count doesn't move.** Count the rows in the user table (a short script run with `tsx`, or the database's own command line), send the POST, count again:
+
+```bash
+curl -s -w '\n%{http_code}\n' -X POST http://localhost:3000/api/auth/sign-up/email \
+  -H 'content-type: application/json' \
+  -d '{"name":"Check","email":"check-a@example.test","password":"check-passphrase-a"}'
+```
+
+`403`, with the message `This app already has an owner. Sign-up is closed.`, and the same count before and after. Measured on a real build: that is what the hook in `references/auth.md` answers. A `200` here means the app is open to anyone who finds the address.
+
+**(b) An id that doesn't exist is a `404` for the owner, not a `500` or an empty page.** The agent has no session and must not ask for the owner's password, so this one is the user's: ask them to open `http://localhost:3000/<route>/<a made-up id>` while signed in and say what they see. With a browser tool that shares their session, do it yourself. If neither is possible, name it as unperformed.
+
+**(c) Read that every query takes the user from the session.** With one account, no probe can show a leak — the day a second account exists is the day it would appear. So read every function in `src/lib/<domain>`, every page, action and route handler: the user id reaches each query from `requireUser()` on pages, `requireUserAction()` in actions and route handlers, or the verified token in an agent tool — never from a form field, a query parameter, a request body or a tool argument.
+
+**Name two checks in the hand-off as "not applicable: only one account can exist":** the two-account isolation probe in step 8, and the non-admin probe of the system page. They are not skipped and not passed; the app's shape rules them out, and saying so is what stops silence reading as success.
+
+#### Invited people only — fixtures through the app's own invite
+
+Not yet built with this skill: invitations were designed in `references/auth.md` and never run, so treat the steps below as the intended shape, confirm each against the code that was actually written, and say in the hand-off which of them ran.
+
+First, with no invitation in place, send the same sign-up POST as in the one-owner path. A stranger is refused and the user count is unchanged.
+
+Then create fixtures the way real members arrive. From a script run with `tsx`, call the same `src/lib` function the invite server action calls — the action's `requireAdminAction()` guard needs a session, the function beneath it does not — once per role you need to probe, with the owner's id as `invitedBy`. With a pending invitation in place the hook lets that email sign up and takes the role from the invitation, so the sign-up POST from the open path creates each fixture with a cookie jar. If the app marks an invitation accepted anywhere other than the hook, do that in the script as well. **Never insert user rows by hand, and never invite a fixture through the owner's browser session.**
+
+Run the same session, sign-out and system-page probes as the open path, using a fixture whose role may not see the system page. Afterwards remove the fixtures **and their invitation rows**, and prove both are gone.
 
 ### 8 — One account's data, seen from the other
 
-The read path is where leaks live, and it is mechanically checkable. Seed one row owned by A directly at the database layer, then ask for it as B over HTTP:
+The read path is where leaks live, and it is mechanically checkable. What "the other" means depends on who owns the data, which the build sheet says.
+
+**One owner: this probe is not applicable** — (b) and (c) above stand in for it, and the hand-off says so.
+
+**Private to each user.** Seed one row owned by A directly at the database layer, then ask for it as B over HTTP:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' -b "$JAR/a.jar" "http://localhost:3000/<route>/<rowId>"   # 200
 curl -s -o /dev/null -w '%{http_code}\n' -b "$JAR/b.jar" "http://localhost:3000/<route>/<rowId>"   # 404, never 200
 ```
 
+**Shared by a team: the probe is role against role, not account against account.** Every member is supposed to see some of the same rows, so "B cannot read A's row" is the wrong question and fails a correct app. Take the rule from the build sheet and probe both sides of it. For a plumbing company: seed one job assigned to plumber A. Plumber A reads it, `200`. Plumber B reads it, `404`, never `200`. The office reads it, `200` — and that `200` is correct, so a `404` there is a finding too. One role that should be refused and one that should be let in is the minimum. Remove the seeded rows before the fixture accounts: a column pointing at a person is `set null` or `restrict` on a team app, so the account will not take the row with it.
+
 **The write path stays out of the gate.** Server actions need a `Next-Action` id and an RSC-encoded body; scripting that is brittle enough to produce false failures, which cost more than the check is worth. Creating a record through the UI stays a browser check or a named unperformed one.
 
-Then remove the fixtures and prove they're gone — the remaining account should be the user's own, still `admin`. A stray `check-a@example.test` sitting in someone's brand-new app is exactly what makes a scaffold feel like a scaffold.
+Then remove whatever fixtures this path created and prove they're gone — the remaining account should be the user's own, still `admin`. On a one-owner app there were none to remove; check the count is still one. A stray `check-a@example.test` sitting in someone's brand-new app is exactly what makes a scaffold feel like a scaffold.
 
 ### 9 — With the keys taken away
 
@@ -202,6 +248,8 @@ Then remove the fixtures and prove they're gone — the remaining account should
 - **Only create the file if it doesn't already exist.** If it does, skip this check and say so.
 - **Never write to `.env`.**
 - Write each integration key the app uses, present and empty. Restart in production mode, re-run the route sweep, stop.
+- **Two keys are required and are never blanked: the database URL (`DATABASE_URL`) and `BETTER_AUTH_SECRET`.** An app cannot degrade past having no database, and measured on a real build, a blank secret in production mode makes every auth page answer `500` with "You are using the default secret" — which is Better Auth refusing to run unsafely, not a bug to fix. Everything else must degrade: email, uploads, payments, AI, jobs, Google sign-in, agent access.
+- **Leave `APP_URL` and `BETTER_AUTH_URL` alone too.** They are addresses, not integration keys, and they must hold the same value. What is worth checking is that a blank one cannot break the build: an empty string survives `??`, and `new URL("")` throws, so every place that derives a URL from env uses `||`.
 - **Delete it, then assert it is gone before anything else happens.** A leftover blanking file disables the user's integrations in every future production build — worse than skipping the check entirely.
 
 Every route still answers, nothing 500s, and each affected surface says what to set. Pair it with the static half, which is free and catches the bug class that matters — a module that throws at import time:
@@ -209,9 +257,10 @@ Every route still answers, nothing 500s, and each affected surface says what to 
 ```bash
 grep -rn "process\.env\.[A-Z_]*!" src/ || echo "clean"
 grep -rn "NEXT_PUBLIC_" src/ || echo "clean"
+grep -rnE "process\.env\.[A-Z_]*URL[A-Z_]* *\?\?" src/ || echo "clean"
 ```
 
-The first finds non-null assertions on keys that may be absent. The second finds anything shipped to the browser — that prefix makes a value public, so a secret behind one is already leaked.
+The first finds non-null assertions on keys that may be absent. The second finds anything shipped to the browser — that prefix makes a value public, so a secret behind one is already leaked. The third finds a URL read with `??`, which keeps an empty string and fails the build the day someone leaves the value blank; change it to `||`.
 
 ### 10 — Stop what you started
 
@@ -219,14 +268,16 @@ Stop the server the gate started, and only that one. `pnpm` spawns `next`, which
 
 ## What a command can't prove
 
-The gate stops at what a status code can answer. The rest needs a browser, a provider round trip, or a human, and it is where most of the app's actual behaviour lives. If a browser tool is available, use it: load `/` and the main page, capture light and dark, capture one narrow viewport, and read the console on each.
+The gate stops at what a status code can answer. The rest needs a browser, a provider round trip, or a human, and it is where most of the app's actual behaviour lives. If a browser tool is available, use it: load `/` and the main page, capture one narrow viewport, and read the console on each. Capture dark mode only if `DESIGN.md` calls for it — the default build is light only.
 
 Then **name every check still not performed.** Do not omit them and do not claim them:
 
-- The app in dark mode, and at a phone-width viewport.
+- The app at a phone-width viewport, and in dark mode where `DESIGN.md` calls for one.
+- One owner: the two-account isolation probe and the non-admin system-page probe, each named as "not applicable: only one account can exist" rather than as unperformed.
+- Every per-file Verify item that was deferred to Step 6 and still could not be run once the user had signed up.
 - Creating a record through the app's own UI rather than the database, and editing and deleting one.
 - Uploads: putting a file through the UI and seeing it render after a refresh.
-- Email: a test send reaching `delivered@resend.dev` with a key set, and — with sign-in — signing up sending a confirmation and "forgot password" actually resetting a password.
+- Email: a test send reaching `delivered@resend.dev` with a key set, and — with sign-in — signing up sending a confirmation and "forgot password" actually resetting a password. With a contact form: submitting it writes a `contact-message` row and, with a key set, the owner's copy arrives with Reply going to the visitor.
 - Payments: the test-mode checkout completing and the paid state showing server-side.
 - AI: the feature working against a real key, and being the feature the interview asked for rather than a bare chat box.
 - Jobs: a run and its steps at http://localhost:8288, a deliberate failure retrying visibly, and the job's row ending in the right state — all of which need `pnpm dev` rather than `pnpm start`.
@@ -300,12 +351,13 @@ Only when there is sign-in.
 
 > You are checking who can reach whose data.
 >
-> The app: `<project root>`. The sheet says the data is `<private to each user / shared with a team / public>`. The probe transcript: `<paste the two-account and isolation output>`.
+> The app: `<project root>`. The sheet says the data is `<private to each user / shared with a team / public>`. The access shape is `<open sign-up / one owner / invited people only>`. The probe transcript: `<paste the step 7 and step 8 output for that shape>`.
 >
 > Find every place the database is read or written — `src/lib/db`, then every `page.tsx`, every server action, every route handler, and every agent tool if the app has them. For each, answer one question: **whose rows can this return?**
 >
 > - A read filtered only by an id from the URL returns any row whose id someone can guess or was once shown.
 > - A write that takes an id and doesn't re-check the owner lets one account edit another's.
+> - Where the sheet says the data is shared with a team, the question is the role rule instead: which roles may see this row, and does the query enforce it on the server? A member reading a teammate's row the sheet says they may read is correct, not a leak.
 > - **The session is the only acceptable source of the current user.** A user id taken from a form field, a query parameter, a request body, a header, or a tool argument is a finding even if the code looks correct today.
 >
 > Then the boundary. Everything admin-only is refused on the server, in the page and in every action behind it. Hiding a link is presentation — if the only thing stopping a normal account is an unrendered link, that is `broken`.
@@ -318,7 +370,7 @@ Only when there is sign-in.
 
 > You are the first stranger to open this app. Read every string a person will see.
 >
-> The sheet: `<paste>`. The nouns and verbs it uses: `<list>`. The pages: `<paste the route list>`. `<If screenshots were captured: light and dark, desktop and narrow, attached.>`
+> The sheet: `<paste>`. The nouns and verbs it uses: `<list>`. The pages: `<paste the route list>`. `<If screenshots were captured: desktop and narrow, and dark where the app has it, attached.>`
 >
 > Start at the front door and answer in one sentence what this app is for. **If you can't, that is the finding and everything else is detail.**
 >
@@ -378,6 +430,7 @@ Two critics contradicting each other: the one with a `path:line` wins. If both h
 - Every command in the gate was run and its output read — not one was assumed from having written the code it tests.
 - Every check that could not be performed is named in the hand-off, with what would be needed to perform it.
 - `.env` is byte-for-byte what it was before the gate ran, and no `.env.production.local` is left behind.
-- No probe account, cookie jar, or seeded row survives the gate. The user's own account is still the admin.
+- No account existed before the user created theirs, and no probe account, invitation row, cookie jar, or seeded row survives the gate. The user's own account is still the admin.
+- The account path that ran matches the access shape on the build sheet, and on a one-owner app the two probes that cannot exist are named as not applicable.
 - No suppression, ignore flag, or deleted promise appears in `git diff` across the fix rounds.
 - Findings that were disagreed with appear in the hand-off with the reason, rather than silently.
